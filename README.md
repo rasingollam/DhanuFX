@@ -1,4 +1,4 @@
-﻿# DhanuFX — v2.30
+﻿# DhanuFX — v2.32
 
 Higher-timeframe areas of interest, matching lower-timeframe entries, money risk sizing, wick-based SL, reward/risk TP and optional entry filters. This version can submit market orders when attached with trading enabled. It has been compiled but has not been attached to a live chart or run against a broker during development.
 
@@ -13,9 +13,11 @@ Higher-timeframe areas of interest, matching lower-timeframe entries, money risk
 | Risk_Money | 100.0 | Fixed-mode budget in account currency; preserves the current source default |
 | Risk_Percent | 1.0 | Percentage-mode budget: current equity * percent / 100 |
 | Take_Profit_RR | 2.0 | Reward divided by risk; 2.0 means 1:2 |
-| Min_HTF_Source_Body_Percent | 0.0 | Skip entries when the area's HTF source (candle[2]) body is below this % of its full high-low range. 0 = off. Baseline candidate 20 |
-| Max_Entry_Distance_R | 0.0 | Skip entries whose current quote chases more than this many R beyond the zone body (0 = inside zone). 0 = off. Baseline candidate 0.25 |
-| Min_Zone_Age_Minutes | 0 | Skip entries into areas younger than this. 0 = off. Baseline candidate 90 (one M90 period) |
+| Min_HTF_Source_Body_Percent | 20.0 | Skip entries when the area's HTF source (candle[2]) body is below this % of its full high-low range. 0 = off. Verdict from filter experiment (config C) |
+| Max_Entry_Distance_R | 0.25 | Skip entries whose current quote chases more than this many R beyond the zone body (0 = inside zone). 0 = off. Verdict from filter experiment (config C) |
+| Min_Zone_Age_Minutes | 90 | Skip entries into areas younger than this. 0 = off. Verdict from filter experiment (config C) |
+| Stop_Mode | HTF wick | SL placement: HTF wick extreme (default), HTF zone body edge, or extreme of the last N closed LTF candles |
+| Stop_Swing_Count | 3 | LTF swing mode only: take the low/high over the last N closed LTF candles behind the entry (1..10) |
 | Enable_Trading | true | False retains HTF visualization without sending orders |
 | Magic_Number | 26090901 | Identifier on EA orders |
 | Deviation_Points | 20 | Execution deviation in symbol points |
@@ -49,13 +51,14 @@ Risk_Type selects the budget calculation. Fixed money uses Risk_Money (current d
 
 ## SL and TP
 
-- Buy SL: the lower of HTF candle[1] low and candle[2] low, including wicks.
-- Sell SL: the higher of HTF candle[1] high and candle[2] high, including wicks.
-- SL is placed at that extreme, with no extra buffer, rounded outward only if required by the broker's price tick size.
-- Buy TP = Ask + RR * (Ask - SL).
-- Sell TP = Bid - RR * (SL - Bid).
+The protective stop level comes from `Stop_Mode` (default `SL_HTF_WICK`, unchanged behavior):
+
+- SL_HTF_WICK — Buy SL: the lower of HTF candle[1] low and candle[2] low, including wicks; Sell SL: the higher of the two highs. This is also the structural level used to invalidate an unentered area.
+- SL_HTF_BODY — Buy SL at the zone body bottom, Sell SL at the zone body top. Tighter than the wick extreme; ties the stop to the mapped body. The entry is skipped if this level is on the wrong side of the market or inside the broker minimum stop distance.
+- SL_LTF_SWING — Buy SL at the lowest low, Sell SL at the highest high, over the last `Stop_Swing_Count` closed LTF candles ending at the entry pattern. The tightest mode; sizes the trade from the recent LTF swing instead of the whole HTF candle. Requires a native (non-synthetic M90) lower timeframe; otherwise that entry falls back to the HTF wick stop and logs it.
+- For every mode: SL is rounded outward only if required by the broker tick size, area invalidation before entry still uses the HTF wick extreme, and an entry is skipped (never silently widened) if the selected stop fails CalculateTradePrices.
+- Buy TP = Ask + RR * (Ask - SL). Sell TP = Bid - RR * (SL - Bid).
 - TP rounds outward to the broker tick size. Both protective prices are included in the initial order request.
-- The EA skips an entry if the specified wick SL is on the wrong side of the market or violates minimum stop distance; it does not silently widen the stop.
 - RR uses the quote immediately before submission. Slippage, spreads and trading costs can make realized reward/risk differ; TP is not recalculated after execution.
 
 ## Visualization and data
@@ -72,18 +75,11 @@ Refresh Navigator, select DhanuFX\DhanuFX, and start a fresh visual test with M9
 
 Use the Journal to inspect area activation/expiry, wick SL, LTF entry direction, entry-filter skips, order return codes and fill price. No entry is expected until an HTF area forms and a later matching LTF retest occurs.
 
-### Filter experiment setup (docs/tester_review.md)
+### Filter experiment results (docs/tester_review.md)
 
-Keep baseline M90/M5, fixed USD 100 and RR 2. Run these four passes over the same period and save each as a separate `.set` so the logged inputs identify it:
+Single filters tested independently on M90/M5, fixed USD 100, RR 2, 2014-2026: source body 20 -> +$990, entry distance 0.25R -> +$909, zone age 90 -> +$1,258, versus baseline +$443 (final balances, after costs). Combinations: all three filters (20 / 0.25 / 90, config C) = +$2,171.62, PF 1.335, worst streak 5, best-balanced half split (39.7%/40.6%). That configuration is now the input default. Reprocess the Agent-3000 log with `docs/analyze_tester_logs.py` (`DHANU_TESTER_LOG` override) to reproduce.
 
-| Pass | Min_HTF_Source_Body_Percent | Max_Entry_Distance_R | Min_Zone_Age_Minutes |
-|---|---|---|---|
-| Baseline | 0 | 0 | 0 |
-| Source body | 20 | 0 | 0 |
-| Entry distance | 0 | 0.25 | 0 |
-| Zone age | 0 | 0 | 90 |
-
-Compare net expectancy, net profit factor, equity drawdown, loss streak, trade count and win rate across chronological subperiods (`docs/analyze_tester_logs.py`). Only combine filters that hold up independently; then compare RR 1, 2 and 3 with the selected entries. Do not overfit a large threshold grid on this same history.
+Remaining scheduled work: RR sweep (RR 1 and RR 3) on the locked config; SL-mode matrix (HTF wick vs HTF body vs LTF swing 1/3/5) on the RR winner; then forward validation on data the thresholds never saw before claiming improvement. Note: for a fair SL comparison keep the entry filters at the locked defaults (config C) and change only Stop_Mode per pass.
 
 ## Verification
 

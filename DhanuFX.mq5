@@ -1,7 +1,7 @@
 #property copyright "DhanuFX"
-#property version   "2.30"
+#property version   "2.32"
 #property strict
-#property description "HTF areas with matching LTF entries, money risk sizing, HTF wick SL, RR TP and optional entry filters."
+#property description "HTF areas with matching LTF entries, money risk sizing, HTF wick SL, RR TP and validated entry filters."
 
 #include "EntrySignal.mqh"
 #include "SyntheticCandle.mqh"
@@ -41,6 +41,13 @@ enum RISK_TYPE
    RISK_EQUITY_PERCENT=1  // Percentage of current account equity
 };
 
+enum STOP_MODE
+{
+   SL_HTF_WICK=0,  // Structural invalidation: last two HTF candle wick extremes
+   SL_HTF_BODY=1,  // Zone body edge (tighter than the wick extreme)
+   SL_LTF_SWING=2  // Extreme of the last N closed LTF candles behind the entry
+};
+
 input SIGNAL_TIMEFRAME Timeframe=TF_M90; // Higher timeframe / area of interest
 input SIGNAL_TIMEFRAME Lower_Timeframe=TF_M5; // Lower timeframe / entry confirmation
 input double Body_to_wick_ratio=20.0; // Maximum directional wick percentage (strictly less)
@@ -48,9 +55,11 @@ input RISK_TYPE Risk_Type=RISK_FIXED_MONEY; // Risk sizing method
 input double Risk_Money=100.0; // Risk per trade in account currency (before costs/slippage)
 input double Risk_Percent=1.0; // Equity percentage per trade (percentage mode only)
 input double Take_Profit_RR=2.0; // Reward / risk: 2.0 = 1:2
-input double Min_HTF_Source_Body_Percent=0.0; // Min HTF source body / full-range % (0 = off, candidate 20)
-input double Max_Entry_Distance_R=0.0; // Max entry chases R beyond zone (0 = off, candidate 0.25)
-input int Min_Zone_Age_Minutes=0; // Min zone age before entry, minutes (0 = off, candidate 90)
+input double Min_HTF_Source_Body_Percent=20.0; // Min HTF source body / full-range % (0 = off; verdict 20)
+input double Max_Entry_Distance_R=0.25; // Max entry chases R beyond zone (0 = off; verdict 0.25)
+input int Min_Zone_Age_Minutes=90; // Min zone age before entry, minutes (0 = off; verdict 90)
+input STOP_MODE Stop_Mode=SL_HTF_WICK; // Stop loss placement method
+input int Stop_Swing_Count=3; // LTF swing mode: extreme over the last N closed LTF candles (1..10)
 input bool Enable_Trading=true; // False = draw HTF areas only
 input ulong Magic_Number=26090901; // EA order identifier
 input ulong Deviation_Points=20; // Allowed execution deviation in symbol points
@@ -93,6 +102,13 @@ int OnInit()
       Print("Min_Zone_Age_Minutes must be >= 0.");
       return INIT_PARAMETERS_INCORRECT;
    }
+   if(Stop_Swing_Count<1 || Stop_Swing_Count>10)
+   {
+      Print("Stop_Swing_Count must be from 1 to 10.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   if(Stop_Mode==SL_LTF_SWING && Lower_Timeframe==TF_M90)
+      Print("Stop mode LTF swing cannot build native M90 bars; entries fall back to the HTF wick stop.");
    signal_timeframe=(Timeframe==TF_M90 ? PERIOD_M1 : (ENUM_TIMEFRAMES)Timeframe);
    signal_seconds=(Timeframe==TF_M90 ? 5400 : PeriodSeconds(signal_timeframe));
    if(signal_seconds<=0) return INIT_PARAMETERS_INCORRECT;
@@ -147,7 +163,8 @@ Print("DhanuFX visualization ready: ",signal_label,
           (Risk_Type==RISK_FIXED_MONEY ? Risk_Money : Risk_Percent),
           (Risk_Type==RISK_FIXED_MONEY ? " "+AccountInfoString(ACCOUNT_CURRENCY) : "% equity"),
           ", RR=",Take_Profit_RR,", filters: source body>=",DoubleToString(Min_HTF_Source_Body_Percent,2),
-          "%, entry distance<=",DoubleToString(Max_Entry_Distance_R,3),"R, zone age>=",Min_Zone_Age_Minutes,"m, trading=",Enable_Trading);
+          "%, entry distance<=",DoubleToString(Max_Entry_Distance_R,3),"R, zone age>=",Min_Zone_Age_Minutes,"m, stop mode=",EnumToString(Stop_Mode),
+          (Stop_Mode==SL_LTF_SWING ? " (swing "+(string)Stop_Swing_Count+")" : ""),", trading=",Enable_Trading);
     return INIT_SUCCEEDED;
 }
 
@@ -274,6 +291,28 @@ bool ReadClosedCandles(const SIGNAL_TIMEFRAME timeframe,const datetime current_b
       return false;
    older=candles[0];
    previous=candles[1];
+   return true;
+}
+
+// Swing stop from the last N closed native LTF candles behind the entry pattern.
+// Returns false when the lower timeframe is synthetic (M90) or history is missing,
+// so the caller can fall back to a structural stop.
+bool LtfSwingStop(const EntrySignal direction,const int count,double &result)
+{
+   if(Lower_Timeframe==TF_M90 || count<1 || count>10)
+      return false;
+   double extreme=0;
+   for(int shift=1; shift<=count; shift++)
+   {
+      const double value=(direction==ENTRY_BUY
+                          ? iLow(_Symbol,(ENUM_TIMEFRAMES)Lower_Timeframe,shift)
+                          : iHigh(_Symbol,(ENUM_TIMEFRAMES)Lower_Timeframe,shift));
+      if(value<=0)
+         return false;
+      extreme=(shift==1 ? value
+               : (direction==ENTRY_BUY ? MathMin(extreme,value) : MathMax(extreme,value)));
+   }
+   result=extreme;
    return true;
 }
 
@@ -451,15 +490,33 @@ void ProcessLowerTimeframe(const MqlTick &tick)
          return;
       }
       double stop=0,target=0;
+      string stop_mode="wick";
+      double raw_stop=areas[i].stop;
+      if(Stop_Mode==SL_HTF_BODY)
+      {
+         raw_stop=(signal==ENTRY_BUY ? areas[i].bottom : areas[i].top);
+         stop_mode="body";
+      }
+      else if(Stop_Mode==SL_LTF_SWING)
+      {
+         double swing=0;
+         if(LtfSwingStop(signal,Stop_Swing_Count,swing))
+         {
+            raw_stop=swing;
+            stop_mode="ltf_swing";
+         }
+         else Print("Stop mode LTF swing unavailable on LTF=",EnumToString(Lower_Timeframe),
+                    "; using HTF wick stop for this entry.");
+      }
       MqlTick entry_quote;
       if(!SymbolInfoTick(_Symbol,entry_quote)) return;
       if(entry_quote.time>=areas[i].expires
          || AreaStopBreached(areas[i],entry_quote.bid,entry_quote.ask)) return;
       const double tick_size=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
       const double minimum=SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL)*_Point;
-      if(!CalculateTradePrices(signal,entry_quote.bid,entry_quote.ask,areas[i].stop,Take_Profit_RR,tick_size,minimum,stop,target))
+      if(!CalculateTradePrices(signal,entry_quote.bid,entry_quote.ask,raw_stop,Take_Profit_RR,tick_size,minimum,stop,target))
       {
-         Print("Entry skipped: HTF wick SL/TP is invalid at this quote or violates broker minimum distance.");
+         Print("Entry skipped: ",stop_mode," SL/TP is invalid at this quote or violates broker minimum distance.");
          return;
       }
       stop=NormalizeDouble(stop,_Digits);
@@ -488,8 +545,9 @@ void ProcessLowerTimeframe(const MqlTick &tick)
       if(code==TRADE_RETCODE_DONE || code==TRADE_RETCODE_DONE_PARTIAL
          || code==TRADE_RETCODE_PLACED || code==TRADE_RETCODE_TIMEOUT)
          areas[i].consumed=true;
-      Print("LTF entry | ",EnumToString(Lower_Timeframe)," | ",signal==ENTRY_BUY ? "BUY" : "SELL",
-            " | zone=",TimeToString(areas[i].confirmed)," | SL=",stop," TP=",target,
+Print("LTF entry | ",EnumToString(Lower_Timeframe)," | ",signal==ENTRY_BUY ? "BUY" : "SELL",
+             " | zone=",TimeToString(areas[i].confirmed)," | stop mode=",stop_mode,
+             " | SL=",stop," TP=",target,
             " | lots=",volume," | estimated risk=",estimated_loss," ",AccountInfoString(ACCOUNT_CURRENCY),
             " | budget=",risk_budget," | risk mode=",EnumToString(Risk_Type),
             " | entry spread=",DoubleToString(entry_quote.ask-entry_quote.bid,_Digits),
