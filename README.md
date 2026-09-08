@@ -77,9 +77,9 @@ Use the Journal to inspect area activation/expiry, wick SL, LTF entry direction,
 
 ### Filter experiment results (docs/tester_review.md)
 
-Single filters tested independently on M90/M5, fixed USD 100, RR 2, 2014-2026: source body 20 -> +$990, entry distance 0.25R -> +$909, zone age 90 -> +$1,258, versus baseline +$443 (final balances, after costs). Combinations: all three filters (20 / 0.25 / 90, config C) = +$2,171.62, PF 1.335, worst streak 5, best-balanced half split (39.7%/40.6%). That configuration is now the input default. Reprocess the Agent-3000 log with `docs/analyze_tester_logs.py` (`DHANU_TESTER_LOG` override) to reproduce.
+Single filters tested independently on M90/M5, fixed USD 100, RR 2, 2014-2026: source body 20 -> +$990, entry distance 0.25R -> +$909, zone age 90 -> +$1,258, versus baseline +$443 (final balances, after costs). Combinations: all three filters (20 / 0.25 / 90, config C) = +$2,171.62 at RR 2, PF 1.335, worst streak 5, best-balanced half split (39.7%/40.6%). RR 3 on the same config = +$2,945.42 (PF 1.395) with ~1.5x drawdown and double the streak. SL placement matrix (v2.32) at RR 3: HTF wick +$2,945 decisively beats HTF body +$689 and every LTF-swing setting (from +$555 to -$580) - keep `Stop_Mode=SL_HTF_WICK` (default). Config C + wick is now the input default. Reprocess the Agent-3000 log with `docs/analyze_tester_logs.py` (`DHANU_TESTER_LOG` override) to reproduce.
 
-Remaining scheduled work: RR sweep (RR 1 and RR 3) on the locked config; SL-mode matrix (HTF wick vs HTF body vs LTF swing 1/3/5) on the RR winner; then forward validation on data the thresholds never saw before claiming improvement. Note: for a fair SL comparison keep the entry filters at the locked defaults (config C) and change only Stop_Mode per pass.
+Remaining scheduled work: forward validation on genuinely unseen data (post 2026-09-08) as the gate before claiming the config ships, with thresholds frozen; RR 2 vs RR 3 decided by that forward result. In parallel: deal-level profit logging.
 
 ## Verification
 

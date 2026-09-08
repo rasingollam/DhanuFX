@@ -21,14 +21,15 @@ for number,line in enumerate(lines,1):
         m=re.search(stamp+r'   Signal evidence \| candle\[2\] O/H/L/C=([\d./-]+) \| candle\[1\] O/H/L/C=([\d./-]+) \| directional wick %=([\d.]+)',line)
         if m: run['areas'][m[1][:16]]={'older':list(map(float,m[2].split('/'))),'previous':list(map(float,m[3].split('/'))),'wick_pct':float(m[4])}
     if 'LTF entry |' in line and 'Entry filter skipped' not in line:
-        m=re.search(stamp+r'   LTF entry \| (\w+) \| (BUY|SELL) \| zone=([\d. :]+) \| SL=([\d.]+) TP=([\d.]+).*?\| deal=(\d+) \| fill=([\d.]+)',line)
+        m=re.search(stamp+r'   LTF entry \| (\w+) \| (BUY|SELL) \| zone=([\d. :]+) \| (?:stop mode=(\w+) \| )?SL=([\d.]+) TP=([\d.]+).*?\| deal=(\d+) \| fill=([\d.]+)',line)
         if m:
             risk=re.search(r'estimated risk=([\d.]+)',line)
             extra={}
+            if m[5]: extra['stop_mode']=m[5]
             f=re.search(r'entry spread=([\d.]+) \| zone age min=([\d.]+) \| chase R=([\d.]+) \| HTF body %=([\d.]+)',line)
             if f:
-                extra={'entry_spread':float(f[1]),'logged_age_min':float(f[2]),'logged_chase_r':float(f[3]),'logged_body_pct':float(f[4])}
-            run['entries'].append(dict({'time':m[1],'direction':m[3],'zone':m[4],'sl':float(m[5]),'tp':float(m[6]),'deal':int(m[7]),'entry':float(m[8]),'risk':float(risk[1]) if risk else None,'line':number},**extra))
+                extra['entry_spread']=float(f[1]); extra['logged_age_min']=float(f[2]); extra['logged_chase_r']=float(f[3]); extra['logged_body_pct']=float(f[4])
+            run['entries'].append(dict({'time':m[1],'direction':m[3],'zone':m[4],'sl':float(m[6]),'tp':float(m[7]),'deal':int(m[8]),'entry':float(m[9]),'risk':float(risk[1]) if risk else None,'line':number},**extra))
     if 'Entry filter skipped |' in line:
         run['filter_skips']=run.get('filter_skips',0)+1
     m=re.search(stamp+r'   (stop loss|take profit) triggered #(\d+) (buy|sell) ([\d.]+) XAUUSD ([\d.]+) sl: ([\d.]+) tp: ([\d.]+)',line)

@@ -69,10 +69,33 @@ Every combination beats every single filter from batch 1. Config C (all three) i
 
 Earlier RR sweep on the same baseline entries (Agent-3001 runs): RR 0.5 won 66% and lost -$522.95; RR 1 won 51.63% for +$257.93; RR 2 won 35.25% for +$442.90; RR 3 won 29.17% for +$2,868.64 (longest streak 15). High win rate alone selects a losing config; RR 3 is not automatically best on drawdown. The 2026-only RR 2 window had 18 trades at 55.56% — small and unrepresentative. Fifteen market-closed rejects per run are an execution-scheduling issue, not the source of losses. Gross closed-balance drawdown estimates above are diagnostics, not the tester's equity drawdown.
 
+## RR and SL results (batch 3, config-C filters fixed, v2.32)
+
+Running source: Agent-3000 log, runs at lines 114324 (RR2 control), 128605/129480 (RR3 wick), 142847 (body), 156058/169106/182126 (LTF swing 1/3/5).
+
+RR effect on config C with the structure stop:
+
+| Config | Trades | Win % | Net | PF* | DD est. | Loss streak | Half split (1st/2nd) | Last 3y |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| RR 2, wick | 137 | 40.15% | +$2,171.62 | 1.335 | $804 | 5 | 39.7 / 40.6 | 44.9% (49) |
+| RR 3, wick | 135 | 31.85% | +$2,945.42 | 1.395 | $1,192 | 11 | 34.3 / 29.4 | 33.3% (48) |
+
+SL placement at RR 3 (same filters, same window):
+
+| Stop mode | Trades | Win % | Net | PF* | DD est. | Loss streak |
+|---|---:|---:|---:|---:|---:|---:|
+| HTF wick | 135 | 31.85% | +$2,945.42 | 1.395 | $1,192 | 11 |
+| HTF body | 50 | 24.00% | +$689.13 | 0.928 | $1,619 | 11 |
+| LTF swing 1 | 96 | 26.04% | -$579.79 | 0.943 | $2,409 | 12 |
+| LTF swing 3 | 93 | 29.03% | +$555.16 | 1.094 | $1,521 | 11 |
+| LTF swing 5 | 97 | 26.80% | -$293.47 | 0.998 | $2,286 | 13 |
+
+The SL hypothesis is answered empirically: every alternative to the structural HTF wick stop cuts win rate, collapses profit factor to roughly 1 and roughly doubles drawdown. Tightening the stop doubles position size for the same $100 risk but gives the noise more chances to stop the trade first; the edge only materializes when the stop sits beyond the HTF wick noise. Keep `Stop_Mode=SL_HTF_WICK` (default). The LTF-swing idea should not ship.
+
+RR: RR 3 maximizes net (+$2,945 vs +$2,172) but at 1.5x drawdown and double the loss streak, and its second-half/last-3y win rates (29.4%/33.3%) are weaker than RR 2's remarkably balanced split (40.6%/44.9%). The recent regime favors the tighter RR 2 profile; the full-history optimum is RR 3. This is a risk-tolerance choice, to be settled by forward data rather than by a single number on inspected history.
+
 ## Next step
 
-Lock the selected entry rules to `Min_HTF_Source_Body_Percent=20`, `Max_Entry_Distance_R=0.25`, `Min_Zone_Age_Minutes=90` (config C, now the v2.3x input default) and sweep the take-profit ratio on the same window/risk: RR 1 and RR 3 (RR 2 is already measured at +$2,171.62). Expect RR 3 to raise net and stretch loss streaks, RR 1 to raise win rate at lower net.
+Freeze the entry rules (config C) and the stop (`SL_HTF_WICK`, both already the v2.32 defaults). Decide RR after forward validation rather than on this inspected window: the honest gate is genuinely unseen data after 2026-09-08 (or if a proxy is needed, a fixed later subperiod reported separately with all thresholds frozen). Precommit expectations before measuring: config C + RR 2 should reproduce something close to ~40% win rate and +$18/trade after costs; RR 3 ~32% win rate and roughly +$22/trade with roughly double the drawdown and occasional 11+ streaks. Do not retune on the forward result; measure it. In parallel, implement deal-level profit logging (realized profit, commission, swap per ticket) so the analysis no longer depends on the 100 oz/lot gross reconstruction.
 
-Then test stop-loss placement (v2.32, `Stop_Mode`): HTF wick vs HTF body vs LTF swing with `Stop_Swing_Count` 1/3/5, only on the RR winner, keeping the config-C filters fixed. Because risk is a fixed dollar amount, the SL method changes trade size, win rate and the entry mix rather than the per-winner payout; judge it on net, drawdown, streak and half-split stability, not on "tighter = better". The LTF-swing mode needs a native lower timeframe (M90 falls back to wick and logs it).
-
-After the RR and SL passes, freeze the full parameter set and validate on genuinely unseen data (live/forward window after 2026-09-08, or at minimum a 2021+ holdout reported separately with all thresholds fixed) before claiming improvement. Parameters have now been selected repeatedly from the same 2014–2026 sample, so the batch-2 numbers include in-sample selection bias; the forward pass is what decides whether the config ships. In parallel, implement deal-level profit logging (realized profit, commission, swap per ticket) so the analysis no longer depends on the 100 oz/lot gross reconstruction.
+One correctness note fixed during batch 3: the 2017-verified M90 history starts are identical across runs and both RR 2 control runs reproduce exactly (+$2,171.62), so the batches are directly comparable.
