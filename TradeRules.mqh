@@ -33,6 +33,19 @@ bool AreaStopBreached(const InterestArea &area,const double bid,const double ask
    return area.direction==ENTRY_BUY ? bid<=area.stop : ask>=area.stop;
 }
 
+double RiskSizedVolume(const double risk,const double loss_per_lot,const double minimum,
+                       const double maximum,const double step)
+{
+   if(risk<=0 || loss_per_lot<=0 || minimum<=0 || maximum<minimum || step<=0)
+      return 0;
+   double limit=risk/loss_per_lot;
+   if(limit>maximum) limit=maximum;
+   double volume=MathFloor(limit/step+1e-10)*step;
+   if(volume*loss_per_lot>risk+1e-8) volume-=step;
+   if(volume<minimum-1e-10 || volume<=0) return 0;
+   return volume;
+}
+
 bool CalculateTradePrices(const EntrySignal direction,const double bid,const double ask,
                           const double raw_stop,const double rr,const double tick_size,
                           const double minimum_distance,double &stop,double &target)

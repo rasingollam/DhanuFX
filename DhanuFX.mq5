@@ -1,7 +1,7 @@
 #property copyright "DhanuFX"
-#property version   "2.00"
+#property version   "2.10"
 #property strict
-#property description "HTF areas with matching LTF entries, fixed lots, HTF wick SL and RR TP."
+#property description "HTF areas with matching LTF entries, money risk sizing, HTF wick SL and RR TP."
 
 #include "EntrySignal.mqh"
 #include "SyntheticCandle.mqh"
@@ -38,7 +38,7 @@ enum SIGNAL_TIMEFRAME
 input SIGNAL_TIMEFRAME Timeframe=TF_M90; // Higher timeframe / area of interest
 input SIGNAL_TIMEFRAME Lower_Timeframe=TF_M5; // Lower timeframe / entry confirmation
 input double Body_to_wick_ratio=20.0; // Maximum directional wick percentage (strictly less)
-input double Lot_Size=0.01; // Fixed trade volume
+input double Risk_Money=100.0; // Risk per trade in account currency (before costs/slippage)
 input double Take_Profit_RR=2.0; // Reward / risk: 2.0 = 1:2
 input bool Enable_Trading=true; // False = draw HTF areas only
 input ulong Magic_Number=26090901; // EA order identifier
@@ -71,19 +71,18 @@ int OnInit()
    if(signal_seconds<=0) return INIT_PARAMETERS_INCORRECT;
    lower_seconds=(Lower_Timeframe==TF_M90 ? 5400 : PeriodSeconds((ENUM_TIMEFRAMES)Lower_Timeframe));
    if(lower_seconds<=0 || lower_seconds>=signal_seconds
-      || !MathIsValidNumber(Lot_Size) || Lot_Size<=0
+      || !MathIsValidNumber(Risk_Money) || Risk_Money<=0
       || !MathIsValidNumber(Take_Profit_RR) || Take_Profit_RR<=0)
    {
-      Print("Lower timeframe must be below HTF. Lot_Size and Take_Profit_RR must be positive.");
+      Print("Lower timeframe must be below HTF. Risk_Money and Take_Profit_RR must be positive.");
       return INIT_PARAMETERS_INCORRECT;
    }
    const double volume_min=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
    const double volume_max=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
    const double volume_step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
-   if(volume_step<=0 || Lot_Size<volume_min || Lot_Size>volume_max
-      || MathAbs(Lot_Size-MathRound(Lot_Size/volume_step)*volume_step)>volume_step*1e-6)
+   if(volume_step<=0 || volume_min<=0 || volume_max<volume_min)
    {
-      Print("Lot_Size is not valid for this symbol. Min=",volume_min," max=",volume_max," step=",volume_step);
+      Print("Invalid symbol volume limits. Min=",volume_min," max=",volume_max," step=",volume_step);
       return INIT_PARAMETERS_INCORRECT;
    }
    trade.SetExpertMagicNumber(Magic_Number);
@@ -111,7 +110,7 @@ int OnInit()
    ObjectSetString(0,legend,OBJPROP_TEXT,"DhanuFX | Signal: "+signal_label+" | Gold = [2] body | Blue = [1] body | Dashed = zone");
    Print("DhanuFX visualization ready: ",signal_label,
          ", LTF=",EnumToString(Lower_Timeframe),", wick threshold ",DoubleToString(Body_to_wick_ratio,2),
-         "%, lots=",Lot_Size,", RR=",Take_Profit_RR,", trading=",Enable_Trading);
+         "%, risk=",Risk_Money," ",AccountInfoString(ACCOUNT_CURRENCY),", RR=",Take_Profit_RR,", trading=",Enable_Trading);
    return INIT_SUCCEEDED;
 }
 
@@ -342,6 +341,42 @@ bool SymbolHasExposure()
    return false;
 }
 
+bool CalculateRiskVolume(const EntrySignal signal,const MqlTick &quote,const double stop,
+                         double &volume,double &estimated_loss)
+{
+   const ENUM_ORDER_TYPE type=(signal==ENTRY_BUY ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
+   const double entry=(signal==ENTRY_BUY ? quote.ask : quote.bid);
+   const double minimum=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   double maximum=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   const double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   const double directional_limit=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_LIMIT);
+   if(directional_limit>0) maximum=MathMin(maximum,directional_limit);
+   double reference_profit=0;
+   // A broker-valid reference volume avoids assuming 1.0 lot is supported.
+   if(!OrderCalcProfit(type,_Symbol,minimum,entry,stop,reference_profit)
+      || !MathIsValidNumber(reference_profit) || reference_profit>=0)
+   {
+      Print("Entry skipped: cannot calculate stop loss in account currency. Error=",GetLastError());
+      return false;
+   }
+   volume=NormalizeDouble(RiskSizedVolume(Risk_Money,-reference_profit/minimum,minimum,maximum,step),8);
+   if(volume<=0)
+   {
+      Print("Entry skipped: minimum lot exceeds risk budget ",Risk_Money," ",AccountInfoString(ACCOUNT_CURRENCY));
+      return false;
+   }
+   double profit=0;
+   if(!OrderCalcProfit(type,_Symbol,volume,entry,stop,profit) || !MathIsValidNumber(profit) || profit>=0)
+      return false;
+   estimated_loss=-profit;
+   if(estimated_loss>Risk_Money+1e-8)
+   {
+      Print("Entry skipped: calculated volume exceeds risk budget.");
+      return false;
+   }
+   return true;
+}
+
 void ProcessLowerTimeframe(const MqlTick &tick)
 {
    const datetime bar=(Lower_Timeframe==TF_M90 ? SyntheticBarStart(tick.time,90)
@@ -383,10 +418,12 @@ void ProcessLowerTimeframe(const MqlTick &tick)
       }
       stop=NormalizeDouble(stop,_Digits);
       target=NormalizeDouble(target,_Digits);
+      double volume=0,estimated_loss=0;
+      if(!CalculateRiskVolume(signal,entry_quote,stop,volume,estimated_loss)) return;
       const string comment="DhanuFX "+IntegerToString((long)areas[i].confirmed);
       const bool submitted=(signal==ENTRY_BUY
-         ? trade.Buy(Lot_Size,_Symbol,0,stop,target,comment)
-         : trade.Sell(Lot_Size,_Symbol,0,stop,target,comment));
+         ? trade.Buy(volume,_Symbol,0,stop,target,comment)
+         : trade.Sell(volume,_Symbol,0,stop,target,comment));
       const uint code=trade.ResultRetcode();
       // Accepted, partially filled, placed, or uncertain timeout: never duplicate.
       if(code==TRADE_RETCODE_DONE || code==TRADE_RETCODE_DONE_PARTIAL
@@ -394,6 +431,7 @@ void ProcessLowerTimeframe(const MqlTick &tick)
          areas[i].consumed=true;
       Print("LTF entry | ",EnumToString(Lower_Timeframe)," | ",signal==ENTRY_BUY ? "BUY" : "SELL",
             " | zone=",TimeToString(areas[i].confirmed)," | SL=",stop," TP=",target,
+            " | lots=",volume," | estimated risk=",estimated_loss," ",AccountInfoString(ACCOUNT_CURRENCY),
             " | submitted=",submitted," | retcode=",code," ",trade.ResultRetcodeDescription(),
             " | deal=",trade.ResultDeal()," | fill=",trade.ResultPrice());
       return;

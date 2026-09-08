@@ -9,6 +9,7 @@ $source=$source -replace 'struct InterestArea','public struct InterestArea'
 $source=$source -replace 'const (MqlRates|InterestArea) &','$1 '
 $source=$source -replace 'const (double|datetime|EntrySignal) ','$1 '
 $source=$source -replace 'datetime','long'
+$source=$source -replace 'double RiskSizedVolume\(','public static double RiskSizedVolume('
 $source=$source -replace 'double &(stop|target)','ref double $1'
 $source=$source -replace '(EntrySignal|bool) (DetectEntry|AreaEntryMatches|AreaStopBreached|CalculateTradePrices)\(','public static $1 $2('
 $source=$source -replace '(?m)^   (EntrySignal|long|double|bool) (\w+);','   public $1 $2;'
@@ -79,4 +80,20 @@ Check (-not [TradeRuleTests]::CalculateTradePrices($buy,100,100.2,95,0,0.01,0,[r
 Check (-not [TradeRuleTests]::CalculateTradePrices($buy,100,100.2,95,2,0,0,[ref]$stop,[ref]$target)) 'Zero tick size accepted'
 Check (-not [TradeRuleTests]::CalculateTradePrices($none,100,100.2,95,2,0.01,0,[ref]$stop,[ref]$target)) 'Invalid direction accepted'
 Check (-not [TradeRuleTests]::CalculateTradePrices($buy,101,100,95,2,0.01,0,[ref]$stop,[ref]$target)) 'Inverted quote accepted'
+foreach ($case in @(
+    @(20,100,0.01,100,0.01,0.20),
+    @(20,300,0.01,100,0.01,0.06),
+    @(20,3000,0.01,100,0.01,0),
+    @(20,2000,0.01,100,0.01,0.01),
+    @(20,10,0.01,1,0.01,1),
+    @(20,30,0.25,100,0.25,0.5),
+    @(20,100,0.1,100,0.1,0.2),
+    @(0,100,0.01,100,0.01,0),
+    @(20,0,0.01,100,0.01,0),
+    @(20,100,0.01,100,0,0),
+    @(20,100,0.1,0.01,0.01,0)
+)) {
+    $volume=[TradeRuleTests]::RiskSizedVolume($case[0],$case[1],$case[2],$case[3],$case[4])
+    Check ([Math]::Abs($volume-$case[5]) -lt 1e-8) "Incorrect risk-sized volume: $case -> $volume"
+}
 Write-Output "PASS: $script:passed shared trade-rule checks. This does not execute broker orders or test MT5 runtime."
