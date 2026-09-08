@@ -1,11 +1,13 @@
 #property copyright "DhanuFX"
-#property version   "1.42"
+#property version   "2.00"
 #property strict
-#property description "Closed-candle entry visualization only. Does not place trades."
+#property description "HTF areas with matching LTF entries, fixed lots, HTF wick SL and RR TP."
 
 #include "EntrySignal.mqh"
 #include "SyntheticCandle.mqh"
 #include "SignalGeometry.mqh"
+#include "TradeRules.mqh"
+#include <Trade/Trade.mqh>
 
 enum SIGNAL_TIMEFRAME
 {
@@ -33,8 +35,20 @@ enum SIGNAL_TIMEFRAME
    TF_MN1=PERIOD_MN1   // MN1 (1 month)
 };
 
-input SIGNAL_TIMEFRAME Timeframe=TF_M90; // Signal timeframe
+input SIGNAL_TIMEFRAME Timeframe=TF_M90; // Higher timeframe / area of interest
+input SIGNAL_TIMEFRAME Lower_Timeframe=TF_M5; // Lower timeframe / entry confirmation
 input double Body_to_wick_ratio=20.0; // Maximum directional wick percentage (strictly less)
+input double Lot_Size=0.01; // Fixed trade volume
+input double Take_Profit_RR=2.0; // Reward / risk: 2.0 = 1:2
+input bool Enable_Trading=true; // False = draw HTF areas only
+input ulong Magic_Number=26090901; // EA order identifier
+input ulong Deviation_Points=20; // Allowed execution deviation in symbol points
+
+CTrade trade;
+InterestArea areas[];
+datetime last_lower_bar=0;
+datetime lower_retry=0;
+int lower_seconds=0;
 
 datetime last_bar=0;
 ENUM_TIMEFRAMES signal_timeframe;
@@ -55,6 +69,30 @@ int OnInit()
    signal_timeframe=(Timeframe==TF_M90 ? PERIOD_M1 : (ENUM_TIMEFRAMES)Timeframe);
    signal_seconds=(Timeframe==TF_M90 ? 5400 : PeriodSeconds(signal_timeframe));
    if(signal_seconds<=0) return INIT_PARAMETERS_INCORRECT;
+   lower_seconds=(Lower_Timeframe==TF_M90 ? 5400 : PeriodSeconds((ENUM_TIMEFRAMES)Lower_Timeframe));
+   if(lower_seconds<=0 || lower_seconds>=signal_seconds
+      || !MathIsValidNumber(Lot_Size) || Lot_Size<=0
+      || !MathIsValidNumber(Take_Profit_RR) || Take_Profit_RR<=0)
+   {
+      Print("Lower timeframe must be below HTF. Lot_Size and Take_Profit_RR must be positive.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   const double volume_min=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   const double volume_max=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   const double volume_step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   if(volume_step<=0 || Lot_Size<volume_min || Lot_Size>volume_max
+      || MathAbs(Lot_Size-MathRound(Lot_Size/volume_step)*volume_step)>volume_step*1e-6)
+   {
+      Print("Lot_Size is not valid for this symbol. Min=",volume_min," max=",volume_max," step=",volume_step);
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   trade.SetExpertMagicNumber(Magic_Number);
+   trade.SetDeviationInPoints(Deviation_Points);
+   trade.SetAsyncMode(false);
+   if(!trade.SetTypeFillingBySymbol(_Symbol)) return INIT_FAILED;
+   ArrayResize(areas,0);
+   last_lower_bar=0;
+   lower_retry=0;
    signal_label=(Timeframe==TF_M90 ? "M90" : EnumToString(signal_timeframe));
    StringReplace(signal_label,"PERIOD_","");
    object_prefix="DhanuFX_"+_Symbol+"_"+signal_label+"_";
@@ -72,7 +110,8 @@ int OnInit()
    ObjectSetInteger(0,legend,OBJPROP_FONTSIZE,10);
    ObjectSetString(0,legend,OBJPROP_TEXT,"DhanuFX | Signal: "+signal_label+" | Gold = [2] body | Blue = [1] body | Dashed = zone");
    Print("DhanuFX visualization ready: ",signal_label,
-         ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%. No trading.");
+         ", LTF=",EnumToString(Lower_Timeframe),", wick threshold ",DoubleToString(Body_to_wick_ratio,2),
+         "%, lots=",Lot_Size,", RR=",Take_Profit_RR,", trading=",Enable_Trading);
    return INIT_SUCCEEDED;
 }
 
@@ -169,29 +208,31 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &p
    return success;
 }
 
-bool ReadClosedCandles(const datetime current_bar,MqlRates &older,MqlRates &previous)
+bool ReadClosedCandles(const SIGNAL_TIMEFRAME timeframe,const datetime current_bar,
+                       MqlRates &older,MqlRates &previous)
 {
-   if(Timeframe==TF_M90)
+   if(timeframe==TF_M90)
    {
-      const datetime start=current_bar-(datetime)(2*signal_seconds);
+      const int seconds=5400;
+      const datetime start=current_bar-(datetime)(2*seconds);
       MqlRates minutes[];
       // Fetch an earlier boundary too, to establish coverage before both candles.
-      const int copied=CopyRates(_Symbol,PERIOD_M1,start-(datetime)signal_seconds,(datetime)(current_bar-1),minutes);
+      const int copied=CopyRates(_Symbol,PERIOD_M1,start-(datetime)seconds,(datetime)(current_bar-1),minutes);
       if(copied<=0 || !SeriesInfoInteger(_Symbol,PERIOD_M1,SERIES_SYNCHRONIZED))
          return false;
       if(minutes[0].time>start) return false;
       // MT5 compresses missing chart bars. A partly traded M90 session interval
       // would otherwise draw as a narrowed "M90" body and change its OHLC.
       if(!HasM90Components(minutes,start)
-         || !HasM90Components(minutes,current_bar-(datetime)signal_seconds))
+         || !HasM90Components(minutes,current_bar-(datetime)seconds))
          return false;
-      return AggregateMinutes(minutes,start,current_bar-(datetime)signal_seconds,older)
-             && AggregateMinutes(minutes,current_bar-(datetime)signal_seconds,current_bar,previous);
+      return AggregateMinutes(minutes,start,current_bar-(datetime)seconds,older)
+             && AggregateMinutes(minutes,current_bar-(datetime)seconds,current_bar,previous);
    }
 
    // Static arrays receive oldest data first: [0]=candle[2], [1]=candle[1].
    MqlRates candles[3];
-   if(CopyRates(_Symbol,signal_timeframe,0,3,candles)!=3)
+   if(CopyRates(_Symbol,(ENUM_TIMEFRAMES)timeframe,0,3,candles)!=3)
       return false;
    if(candles[2].time!=current_bar)
       return false;
@@ -200,7 +241,7 @@ bool ReadClosedCandles(const datetime current_bar,MqlRates &older,MqlRates &prev
    return true;
 }
 
-void OnTick()
+void ProcessHigherTimeframe()
 {
    const datetime now=TimeCurrent();
    const datetime current_bar=(Timeframe==TF_M90
@@ -218,7 +259,7 @@ void OnTick()
    if(now<next_history_retry)
       return;
    MqlRates older,previous;
-   if(!ReadClosedCandles(current_bar,older,previous))
+   if(!ReadClosedCandles(Timeframe,current_bar,older,previous))
    {
       // A failed history read is not a processed signal. Retry once per minute.
       next_history_retry=now-(now%60)+60;
@@ -245,6 +286,127 @@ void OnTick()
          " | candle[1] O/H/L/C=",previous.open,"/",previous.high,"/",previous.low,"/",previous.close,
          " | directional wick %=",DoubleToString(100.0*wick/(body+wick),4));
    DrawSignal(signal,older,previous,current_bar);
+   AddInterestArea(signal,older,previous,current_bar);
+}
+
+void AddInterestArea(const EntrySignal signal,const MqlRates &older,
+                     const MqlRates &previous,const datetime confirmation)
+{
+   InterestArea area;
+   area.direction=signal;
+   area.confirmed=confirmation;
+   area.available=TimeCurrent();
+   area.expires=confirmation+(datetime)(5*signal_seconds);
+   if(Timeframe==TF_MN1)
+   {
+      MqlDateTime date;
+      if(!TimeToStruct(confirmation,date)) return;
+      date.mon+=5;
+      if(date.mon>12) { date.mon-=12; date.year++; }
+      area.expires=StructToTime(date);
+   }
+   area.top=MathMax(older.open,older.close);
+   area.bottom=MathMin(older.open,older.close);
+   area.stop=(signal==ENTRY_BUY ? MathMin(older.low,previous.low) : MathMax(older.high,previous.high));
+   area.consumed=false;
+   const int count=ArraySize(areas);
+   if(ArrayResize(areas,count+1)!=count+1) { Print("Cannot allocate interest area"); return; }
+   areas[count]=area;
+   Print("Area activated | ",signal_label," | ",TimeToString(confirmation),
+         " | body=",area.bottom,"..",area.top," | wick SL=",area.stop," | expires=",TimeToString(area.expires));
+}
+
+void MaintainAreas(const MqlTick &tick)
+{
+   int keep=0;
+   for(int i=0;i<ArraySize(areas);i++)
+   {
+      if(areas[i].consumed || tick.time>=areas[i].expires) continue;
+      if(AreaStopBreached(areas[i],tick.bid,tick.ask))
+      {
+         Print("Area invalidated at HTF wick extreme | ",TimeToString(areas[i].confirmed));
+         continue;
+      }
+      areas[keep++]=areas[i];
+   }
+   ArrayResize(areas,keep);
+}
+
+bool SymbolHasExposure()
+{
+   // Avoid netting into, closing, or interfering with another symbol position.
+   for(int i=PositionsTotal()-1;i>=0;i--)
+      if(PositionGetSymbol(i)==_Symbol) return true;
+   for(int i=OrdersTotal()-1;i>=0;i--)
+      if(OrderGetTicket(i)>0 && OrderGetString(ORDER_SYMBOL)==_Symbol) return true;
+   return false;
+}
+
+void ProcessLowerTimeframe(const MqlTick &tick)
+{
+   const datetime bar=(Lower_Timeframe==TF_M90 ? SyntheticBarStart(tick.time,90)
+                       : iTime(_Symbol,(ENUM_TIMEFRAMES)Lower_Timeframe,0));
+   if(bar==0 || bar==last_lower_bar) return;
+   if(last_lower_bar==0) { last_lower_bar=bar; return; }
+   if(tick.time<lower_retry) return;
+   MqlRates older,previous;
+   if(!ReadClosedCandles(Lower_Timeframe,bar,older,previous))
+   {
+      lower_retry=tick.time+1;
+      return;
+   }
+   lower_retry=0;
+   last_lower_bar=bar; // Never submit more than once for this closed LTF pattern.
+   if(!Enable_Trading || SymbolHasExposure()) return;
+   const EntrySignal signal=DetectEntry(older,previous,Body_to_wick_ratio);
+   if(signal==ENTRY_NONE) return;
+   for(int i=ArraySize(areas)-1;i>=0;i--)
+   {
+      if(!AreaEntryMatches(areas[i],older,previous,tick.time,signal)) continue;
+      if(!MQLInfoInteger(MQL_TRADE_ALLOWED) || !TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)
+         || !AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) || !AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+      {
+         Print("Entry skipped: automated trading is disabled.");
+         return;
+      }
+      double stop=0,target=0;
+      MqlTick entry_quote;
+      if(!SymbolInfoTick(_Symbol,entry_quote)) return;
+      if(entry_quote.time>=areas[i].expires
+         || AreaStopBreached(areas[i],entry_quote.bid,entry_quote.ask)) return;
+      const double tick_size=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+      const double minimum=SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL)*_Point;
+      if(!CalculateTradePrices(signal,entry_quote.bid,entry_quote.ask,areas[i].stop,Take_Profit_RR,tick_size,minimum,stop,target))
+      {
+         Print("Entry skipped: HTF wick SL/TP is invalid at this quote or violates broker minimum distance.");
+         return;
+      }
+      stop=NormalizeDouble(stop,_Digits);
+      target=NormalizeDouble(target,_Digits);
+      const string comment="DhanuFX "+IntegerToString((long)areas[i].confirmed);
+      const bool submitted=(signal==ENTRY_BUY
+         ? trade.Buy(Lot_Size,_Symbol,0,stop,target,comment)
+         : trade.Sell(Lot_Size,_Symbol,0,stop,target,comment));
+      const uint code=trade.ResultRetcode();
+      // Accepted, partially filled, placed, or uncertain timeout: never duplicate.
+      if(code==TRADE_RETCODE_DONE || code==TRADE_RETCODE_DONE_PARTIAL
+         || code==TRADE_RETCODE_PLACED || code==TRADE_RETCODE_TIMEOUT)
+         areas[i].consumed=true;
+      Print("LTF entry | ",EnumToString(Lower_Timeframe)," | ",signal==ENTRY_BUY ? "BUY" : "SELL",
+            " | zone=",TimeToString(areas[i].confirmed)," | SL=",stop," TP=",target,
+            " | submitted=",submitted," | retcode=",code," ",trade.ResultRetcodeDescription(),
+            " | deal=",trade.ResultDeal()," | fill=",trade.ResultPrice());
+      return;
+   }
+}
+
+void OnTick()
+{
+   ProcessHigherTimeframe();
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick) || tick.bid<=0 || tick.ask<tick.bid) return;
+   MaintainAreas(tick);
+   ProcessLowerTimeframe(tick);
 }
 
 // Keep rectangles after removal/test completion for inspection.
