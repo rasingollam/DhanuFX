@@ -481,7 +481,54 @@
         "max_loss_streak": 2
       },
       "rejected": 0,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 18,
+          "wins": 10,
+          "losses": 8,
+          "win_pct": 55.56,
+          "gross_pnl": 1179.8,
+          "gross_pf": 2.716,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        },
+        "first_half": {
+          "n": 9,
+          "wins": 6,
+          "losses": 3,
+          "win_pct": 66.67,
+          "gross_pnl": 886.47,
+          "gross_pf": 4.704,
+          "estimated_closed_balance_dd": 84.56,
+          "max_loss_streak": 1
+        },
+        "second_half": {
+          "n": 9,
+          "wins": 4,
+          "losses": 5,
+          "win_pct": 44.44,
+          "gross_pnl": 293.33,
+          "gross_pf": 1.654,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        },
+        "last_3y": {
+          "n": 18,
+          "wins": 10,
+          "losses": 8,
+          "win_pct": 55.56,
+          "gross_pnl": 1179.8,
+          "gross_pf": 2.716,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        }
+      }
     },
     {
       "start_line": 967,
@@ -6732,7 +6779,54 @@
         "max_loss_streak": 10
       },
       "rejected": 15,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 244,
+          "wins": 86,
+          "losses": 158,
+          "win_pct": 35.25,
+          "gross_pnl": 1257.72,
+          "gross_pf": 1.081,
+          "estimated_closed_balance_dd": 1487.07,
+          "max_loss_streak": 10
+        },
+        "first_half": {
+          "n": 122,
+          "wins": 42,
+          "losses": 80,
+          "win_pct": 34.43,
+          "gross_pnl": 306.06,
+          "gross_pf": 1.038,
+          "estimated_closed_balance_dd": 1278.37,
+          "max_loss_streak": 8
+        },
+        "second_half": {
+          "n": 122,
+          "wins": 44,
+          "losses": 78,
+          "win_pct": 36.07,
+          "gross_pnl": 951.66,
+          "gross_pf": 1.127,
+          "estimated_closed_balance_dd": 1487.07,
+          "max_loss_streak": 10
+        },
+        "last_3y": {
+          "n": 83,
+          "wins": 34,
+          "losses": 49,
+          "win_pct": 40.96,
+          "gross_pnl": 1862.62,
+          "gross_pf": 1.401,
+          "estimated_closed_balance_dd": 880.12,
+          "max_loss_streak": 7
+        }
+      }
     },
     {
       "start_line": 15206,
@@ -13033,7 +13127,54 @@
         "max_loss_streak": 6
       },
       "rejected": 15,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 246,
+          "wins": 127,
+          "losses": 119,
+          "win_pct": 51.63,
+          "gross_pnl": 727.44,
+          "gross_pf": 1.062,
+          "estimated_closed_balance_dd": 1674.86,
+          "max_loss_streak": 6
+        },
+        "first_half": {
+          "n": 123,
+          "wins": 64,
+          "losses": 59,
+          "win_pct": 52.03,
+          "gross_pnl": 426.72,
+          "gross_pf": 1.072,
+          "estimated_closed_balance_dd": 764.19,
+          "max_loss_streak": 6
+        },
+        "second_half": {
+          "n": 123,
+          "wins": 63,
+          "losses": 60,
+          "win_pct": 51.22,
+          "gross_pnl": 300.72,
+          "gross_pf": 1.052,
+          "estimated_closed_balance_dd": 1674.86,
+          "max_loss_streak": 6
+        },
+        "last_3y": {
+          "n": 85,
+          "wins": 49,
+          "losses": 36,
+          "win_pct": 57.65,
+          "gross_pnl": 1295.73,
+          "gross_pf": 1.379,
+          "estimated_closed_balance_dd": 690.63,
+          "max_loss_streak": 6
+        }
+      }
     },
     {
       "start_line": 29464,
@@ -19334,7 +19475,54 @@
         "max_loss_streak": 6
       },
       "rejected": 15,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 246,
+          "wins": 163,
+          "losses": 83,
+          "win_pct": 66.26,
+          "gross_pnl": -176.02,
+          "gross_pf": 0.979,
+          "estimated_closed_balance_dd": 1250.81,
+          "max_loss_streak": 6
+        },
+        "first_half": {
+          "n": 123,
+          "wins": 83,
+          "losses": 40,
+          "win_pct": 67.48,
+          "gross_pnl": 116.68,
+          "gross_pf": 1.029,
+          "estimated_closed_balance_dd": 623.64,
+          "max_loss_streak": 4
+        },
+        "second_half": {
+          "n": 123,
+          "wins": 80,
+          "losses": 43,
+          "win_pct": 65.04,
+          "gross_pnl": -292.7,
+          "gross_pf": 0.93,
+          "estimated_closed_balance_dd": 1250.81,
+          "max_loss_streak": 6
+        },
+        "last_3y": {
+          "n": 85,
+          "wins": 58,
+          "losses": 27,
+          "win_pct": 68.24,
+          "gross_pnl": 209.85,
+          "gross_pf": 1.082,
+          "estimated_closed_balance_dd": 730.57,
+          "max_loss_streak": 6
+        }
+      }
     },
     {
       "start_line": 43722,
@@ -25479,7 +25667,54 @@
         "max_loss_streak": 15
       },
       "rejected": 14,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 240,
+          "wins": 70,
+          "losses": 170,
+          "win_pct": 29.17,
+          "gross_pnl": 3840.83,
+          "gross_pf": 1.23,
+          "estimated_closed_balance_dd": 1577.46,
+          "max_loss_streak": 15
+        },
+        "first_half": {
+          "n": 120,
+          "wins": 35,
+          "losses": 85,
+          "win_pct": 29.17,
+          "gross_pnl": 1876.01,
+          "gross_pf": 1.221,
+          "estimated_closed_balance_dd": 1480.92,
+          "max_loss_streak": 13
+        },
+        "second_half": {
+          "n": 120,
+          "wins": 35,
+          "losses": 85,
+          "win_pct": 29.17,
+          "gross_pnl": 1964.82,
+          "gross_pf": 1.24,
+          "estimated_closed_balance_dd": 1577.46,
+          "max_loss_streak": 15
+        },
+        "last_3y": {
+          "n": 80,
+          "wins": 27,
+          "losses": 53,
+          "win_pct": 33.75,
+          "gross_pnl": 2770.2,
+          "gross_pf": 1.552,
+          "estimated_closed_balance_dd": 1322.49,
+          "max_loss_streak": 9
+        }
+      }
     },
     {
       "start_line": 57918,
@@ -31626,7 +31861,54 @@
         "max_loss_streak": 15
       },
       "rejected": 14,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 240,
+          "wins": 70,
+          "losses": 170,
+          "win_pct": 29.17,
+          "gross_pnl": 3840.83,
+          "gross_pf": 1.23,
+          "estimated_closed_balance_dd": 1577.46,
+          "max_loss_streak": 15
+        },
+        "first_half": {
+          "n": 120,
+          "wins": 35,
+          "losses": 85,
+          "win_pct": 29.17,
+          "gross_pnl": 1876.01,
+          "gross_pf": 1.221,
+          "estimated_closed_balance_dd": 1480.92,
+          "max_loss_streak": 13
+        },
+        "second_half": {
+          "n": 120,
+          "wins": 35,
+          "losses": 85,
+          "win_pct": 29.17,
+          "gross_pnl": 1964.82,
+          "gross_pf": 1.24,
+          "estimated_closed_balance_dd": 1577.46,
+          "max_loss_streak": 15
+        },
+        "last_3y": {
+          "n": 80,
+          "wins": 27,
+          "losses": 53,
+          "win_pct": 33.75,
+          "gross_pnl": 2770.2,
+          "gross_pf": 1.552,
+          "estimated_closed_balance_dd": 1322.49,
+          "max_loss_streak": 9
+        }
+      }
     },
     {
       "start_line": 72115,
@@ -32109,7 +32391,54 @@
         "max_loss_streak": 2
       },
       "rejected": 0,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 18,
+          "wins": 10,
+          "losses": 8,
+          "win_pct": 55.56,
+          "gross_pnl": 1179.8,
+          "gross_pf": 2.716,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        },
+        "first_half": {
+          "n": 9,
+          "wins": 6,
+          "losses": 3,
+          "win_pct": 66.67,
+          "gross_pnl": 886.47,
+          "gross_pf": 4.704,
+          "estimated_closed_balance_dd": 84.56,
+          "max_loss_streak": 1
+        },
+        "second_half": {
+          "n": 9,
+          "wins": 4,
+          "losses": 5,
+          "win_pct": 44.44,
+          "gross_pnl": 293.33,
+          "gross_pf": 1.654,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        },
+        "last_3y": {
+          "n": 18,
+          "wins": 10,
+          "losses": 8,
+          "win_pct": 55.56,
+          "gross_pnl": 1179.8,
+          "gross_pf": 2.716,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        }
+      }
     },
     {
       "start_line": 73061,
@@ -38117,7 +38446,54 @@
         "max_loss_streak": 9
       },
       "rejected": 15,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 234,
+          "wins": 84,
+          "losses": 150,
+          "win_pct": 35.9,
+          "gross_pnl": 534.68,
+          "gross_pf": 1.011,
+          "estimated_closed_balance_dd": 4679.18,
+          "max_loss_streak": 9
+        },
+        "first_half": {
+          "n": 117,
+          "wins": 41,
+          "losses": 76,
+          "win_pct": 35.04,
+          "gross_pnl": -931.06,
+          "gross_pf": 0.965,
+          "estimated_closed_balance_dd": 3993.96,
+          "max_loss_streak": 8
+        },
+        "second_half": {
+          "n": 117,
+          "wins": 43,
+          "losses": 74,
+          "win_pct": 36.75,
+          "gross_pnl": 1465.74,
+          "gross_pf": 1.074,
+          "estimated_closed_balance_dd": 4679.18,
+          "max_loss_streak": 9
+        },
+        "last_3y": {
+          "n": 81,
+          "wins": 34,
+          "losses": 47,
+          "win_pct": 41.98,
+          "gross_pnl": 4486.18,
+          "gross_pf": 1.375,
+          "estimated_closed_balance_dd": 2190.89,
+          "max_loss_streak": 7
+        }
+      }
     },
     {
       "start_line": 87223,
@@ -44370,7 +44746,54 @@
         "max_loss_streak": 10
       },
       "rejected": 15,
-      "unmatched": 0
+      "unmatched": 0,
+      "filters": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "period_stats": {
+        "whole": {
+          "n": 244,
+          "wins": 86,
+          "losses": 158,
+          "win_pct": 35.25,
+          "gross_pnl": 1257.72,
+          "gross_pf": 1.081,
+          "estimated_closed_balance_dd": 1487.07,
+          "max_loss_streak": 10
+        },
+        "first_half": {
+          "n": 122,
+          "wins": 42,
+          "losses": 80,
+          "win_pct": 34.43,
+          "gross_pnl": 306.06,
+          "gross_pf": 1.038,
+          "estimated_closed_balance_dd": 1278.37,
+          "max_loss_streak": 8
+        },
+        "second_half": {
+          "n": 122,
+          "wins": 44,
+          "losses": 78,
+          "win_pct": 36.07,
+          "gross_pnl": 951.66,
+          "gross_pf": 1.127,
+          "estimated_closed_balance_dd": 1487.07,
+          "max_loss_streak": 10
+        },
+        "last_3y": {
+          "n": 83,
+          "wins": 34,
+          "losses": 49,
+          "win_pct": 40.96,
+          "gross_pnl": 1862.62,
+          "gross_pf": 1.401,
+          "estimated_closed_balance_dd": 880.12,
+          "max_loss_streak": 7
+        }
+      }
     }
   ],
   "latest_groups": {
@@ -44828,5 +45251,493 @@
         "max_loss_streak": 9
       }
     }
-  }
+  },
+  "experiment_table": [
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "2.0",
+      "risk_money": "100.0",
+      "final_balance": 11177.66,
+      "rejected": 0,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 18,
+          "wins": 10,
+          "losses": 8,
+          "win_pct": 55.56,
+          "gross_pnl": 1179.8,
+          "gross_pf": 2.716,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        },
+        "first_half": {
+          "n": 9,
+          "wins": 6,
+          "losses": 3,
+          "win_pct": 66.67,
+          "gross_pnl": 886.47,
+          "gross_pf": 4.704,
+          "estimated_closed_balance_dd": 84.56,
+          "max_loss_streak": 1
+        },
+        "second_half": {
+          "n": 9,
+          "wins": 4,
+          "losses": 5,
+          "win_pct": 44.44,
+          "gross_pnl": 293.33,
+          "gross_pf": 1.654,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        },
+        "last_3y": {
+          "n": 18,
+          "wins": 10,
+          "losses": 8,
+          "win_pct": 55.56,
+          "gross_pnl": 1179.8,
+          "gross_pf": 2.716,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        }
+      }
+    },
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "2.0",
+      "risk_money": "100.0",
+      "final_balance": 10442.9,
+      "rejected": 15,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 244,
+          "wins": 86,
+          "losses": 158,
+          "win_pct": 35.25,
+          "gross_pnl": 1257.72,
+          "gross_pf": 1.081,
+          "estimated_closed_balance_dd": 1487.07,
+          "max_loss_streak": 10
+        },
+        "first_half": {
+          "n": 122,
+          "wins": 42,
+          "losses": 80,
+          "win_pct": 34.43,
+          "gross_pnl": 306.06,
+          "gross_pf": 1.038,
+          "estimated_closed_balance_dd": 1278.37,
+          "max_loss_streak": 8
+        },
+        "second_half": {
+          "n": 122,
+          "wins": 44,
+          "losses": 78,
+          "win_pct": 36.07,
+          "gross_pnl": 951.66,
+          "gross_pf": 1.127,
+          "estimated_closed_balance_dd": 1487.07,
+          "max_loss_streak": 10
+        },
+        "last_3y": {
+          "n": 83,
+          "wins": 34,
+          "losses": 49,
+          "win_pct": 40.96,
+          "gross_pnl": 1862.62,
+          "gross_pf": 1.401,
+          "estimated_closed_balance_dd": 880.12,
+          "max_loss_streak": 7
+        }
+      }
+    },
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "1",
+      "risk_money": "100.0",
+      "final_balance": 10257.93,
+      "rejected": 15,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 246,
+          "wins": 127,
+          "losses": 119,
+          "win_pct": 51.63,
+          "gross_pnl": 727.44,
+          "gross_pf": 1.062,
+          "estimated_closed_balance_dd": 1674.86,
+          "max_loss_streak": 6
+        },
+        "first_half": {
+          "n": 123,
+          "wins": 64,
+          "losses": 59,
+          "win_pct": 52.03,
+          "gross_pnl": 426.72,
+          "gross_pf": 1.072,
+          "estimated_closed_balance_dd": 764.19,
+          "max_loss_streak": 6
+        },
+        "second_half": {
+          "n": 123,
+          "wins": 63,
+          "losses": 60,
+          "win_pct": 51.22,
+          "gross_pnl": 300.72,
+          "gross_pf": 1.052,
+          "estimated_closed_balance_dd": 1674.86,
+          "max_loss_streak": 6
+        },
+        "last_3y": {
+          "n": 85,
+          "wins": 49,
+          "losses": 36,
+          "win_pct": 57.65,
+          "gross_pnl": 1295.73,
+          "gross_pf": 1.379,
+          "estimated_closed_balance_dd": 690.63,
+          "max_loss_streak": 6
+        }
+      }
+    },
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "0.5",
+      "risk_money": "100.0",
+      "final_balance": 9477.05,
+      "rejected": 15,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 246,
+          "wins": 163,
+          "losses": 83,
+          "win_pct": 66.26,
+          "gross_pnl": -176.02,
+          "gross_pf": 0.979,
+          "estimated_closed_balance_dd": 1250.81,
+          "max_loss_streak": 6
+        },
+        "first_half": {
+          "n": 123,
+          "wins": 83,
+          "losses": 40,
+          "win_pct": 67.48,
+          "gross_pnl": 116.68,
+          "gross_pf": 1.029,
+          "estimated_closed_balance_dd": 623.64,
+          "max_loss_streak": 4
+        },
+        "second_half": {
+          "n": 123,
+          "wins": 80,
+          "losses": 43,
+          "win_pct": 65.04,
+          "gross_pnl": -292.7,
+          "gross_pf": 0.93,
+          "estimated_closed_balance_dd": 1250.81,
+          "max_loss_streak": 6
+        },
+        "last_3y": {
+          "n": 85,
+          "wins": 58,
+          "losses": 27,
+          "win_pct": 68.24,
+          "gross_pnl": 209.85,
+          "gross_pf": 1.082,
+          "estimated_closed_balance_dd": 730.57,
+          "max_loss_streak": 6
+        }
+      }
+    },
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "3",
+      "risk_money": "100.0",
+      "final_balance": 12868.64,
+      "rejected": 14,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 240,
+          "wins": 70,
+          "losses": 170,
+          "win_pct": 29.17,
+          "gross_pnl": 3840.83,
+          "gross_pf": 1.23,
+          "estimated_closed_balance_dd": 1577.46,
+          "max_loss_streak": 15
+        },
+        "first_half": {
+          "n": 120,
+          "wins": 35,
+          "losses": 85,
+          "win_pct": 29.17,
+          "gross_pnl": 1876.01,
+          "gross_pf": 1.221,
+          "estimated_closed_balance_dd": 1480.92,
+          "max_loss_streak": 13
+        },
+        "second_half": {
+          "n": 120,
+          "wins": 35,
+          "losses": 85,
+          "win_pct": 29.17,
+          "gross_pnl": 1964.82,
+          "gross_pf": 1.24,
+          "estimated_closed_balance_dd": 1577.46,
+          "max_loss_streak": 15
+        },
+        "last_3y": {
+          "n": 80,
+          "wins": 27,
+          "losses": 53,
+          "win_pct": 33.75,
+          "gross_pnl": 2770.2,
+          "gross_pf": 1.552,
+          "estimated_closed_balance_dd": 1322.49,
+          "max_loss_streak": 9
+        }
+      }
+    },
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "3",
+      "risk_money": "100.0",
+      "final_balance": 12868.64,
+      "rejected": 14,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 240,
+          "wins": 70,
+          "losses": 170,
+          "win_pct": 29.17,
+          "gross_pnl": 3840.83,
+          "gross_pf": 1.23,
+          "estimated_closed_balance_dd": 1577.46,
+          "max_loss_streak": 15
+        },
+        "first_half": {
+          "n": 120,
+          "wins": 35,
+          "losses": 85,
+          "win_pct": 29.17,
+          "gross_pnl": 1876.01,
+          "gross_pf": 1.221,
+          "estimated_closed_balance_dd": 1480.92,
+          "max_loss_streak": 13
+        },
+        "second_half": {
+          "n": 120,
+          "wins": 35,
+          "losses": 85,
+          "win_pct": 29.17,
+          "gross_pnl": 1964.82,
+          "gross_pf": 1.24,
+          "estimated_closed_balance_dd": 1577.46,
+          "max_loss_streak": 15
+        },
+        "last_3y": {
+          "n": 80,
+          "wins": 27,
+          "losses": 53,
+          "win_pct": 33.75,
+          "gross_pnl": 2770.2,
+          "gross_pf": 1.552,
+          "estimated_closed_balance_dd": 1322.49,
+          "max_loss_streak": 9
+        }
+      }
+    },
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "2.0",
+      "risk_money": "100.0",
+      "final_balance": 11177.66,
+      "rejected": 0,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 18,
+          "wins": 10,
+          "losses": 8,
+          "win_pct": 55.56,
+          "gross_pnl": 1179.8,
+          "gross_pf": 2.716,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        },
+        "first_half": {
+          "n": 9,
+          "wins": 6,
+          "losses": 3,
+          "win_pct": 66.67,
+          "gross_pnl": 886.47,
+          "gross_pf": 4.704,
+          "estimated_closed_balance_dd": 84.56,
+          "max_loss_streak": 1
+        },
+        "second_half": {
+          "n": 9,
+          "wins": 4,
+          "losses": 5,
+          "win_pct": 44.44,
+          "gross_pnl": 293.33,
+          "gross_pf": 1.654,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        },
+        "last_3y": {
+          "n": 18,
+          "wins": 10,
+          "losses": 8,
+          "win_pct": 55.56,
+          "gross_pnl": 1179.8,
+          "gross_pf": 2.716,
+          "estimated_closed_balance_dd": 193.91,
+          "max_loss_streak": 2
+        }
+      }
+    },
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "2.0",
+      "risk_money": "100.0",
+      "final_balance": 8233.19,
+      "rejected": 15,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 234,
+          "wins": 84,
+          "losses": 150,
+          "win_pct": 35.9,
+          "gross_pnl": 534.68,
+          "gross_pf": 1.011,
+          "estimated_closed_balance_dd": 4679.18,
+          "max_loss_streak": 9
+        },
+        "first_half": {
+          "n": 117,
+          "wins": 41,
+          "losses": 76,
+          "win_pct": 35.04,
+          "gross_pnl": -931.06,
+          "gross_pf": 0.965,
+          "estimated_closed_balance_dd": 3993.96,
+          "max_loss_streak": 8
+        },
+        "second_half": {
+          "n": 117,
+          "wins": 43,
+          "losses": 74,
+          "win_pct": 36.75,
+          "gross_pnl": 1465.74,
+          "gross_pf": 1.074,
+          "estimated_closed_balance_dd": 4679.18,
+          "max_loss_streak": 9
+        },
+        "last_3y": {
+          "n": 81,
+          "wins": 34,
+          "losses": 47,
+          "win_pct": 41.98,
+          "gross_pnl": 4486.18,
+          "gross_pf": 1.375,
+          "estimated_closed_balance_dd": 2190.89,
+          "max_loss_streak": 7
+        }
+      }
+    },
+    {
+      "filters": {
+        "source_body": 0.0,
+        "entry_distance_r": 0.0,
+        "zone_age_min": 0.0
+      },
+      "rr": "2.0",
+      "risk_money": "100.0",
+      "final_balance": 10442.9,
+      "rejected": 15,
+      "skips": 0,
+      "period_stats": {
+        "whole": {
+          "n": 244,
+          "wins": 86,
+          "losses": 158,
+          "win_pct": 35.25,
+          "gross_pnl": 1257.72,
+          "gross_pf": 1.081,
+          "estimated_closed_balance_dd": 1487.07,
+          "max_loss_streak": 10
+        },
+        "first_half": {
+          "n": 122,
+          "wins": 42,
+          "losses": 80,
+          "win_pct": 34.43,
+          "gross_pnl": 306.06,
+          "gross_pf": 1.038,
+          "estimated_closed_balance_dd": 1278.37,
+          "max_loss_streak": 8
+        },
+        "second_half": {
+          "n": 122,
+          "wins": 44,
+          "losses": 78,
+          "win_pct": 36.07,
+          "gross_pnl": 951.66,
+          "gross_pf": 1.127,
+          "estimated_closed_balance_dd": 1487.07,
+          "max_loss_streak": 10
+        },
+        "last_3y": {
+          "n": 83,
+          "wins": 34,
+          "losses": 49,
+          "win_pct": 40.96,
+          "gross_pnl": 1862.62,
+          "gross_pf": 1.401,
+          "estimated_closed_balance_dd": 880.12,
+          "max_loss_streak": 7
+        }
+      }
+    }
+  ]
 }

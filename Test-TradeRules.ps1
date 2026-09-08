@@ -8,13 +8,14 @@ $source=$source -replace 'enum EntrySignal','public enum EntrySignal'
 $source=$source -replace 'struct InterestArea','public struct InterestArea'
 $source=$source -replace 'const (MqlRates|InterestArea) &','$1 '
 $source=$source -replace 'const (double|datetime|EntrySignal) ','$1 '
+$source=$source -replace 'const (long|int|ulong|uint) ','$1 '
 $source=$source -replace 'datetime','long'
+$source=$source -replace 'MathFloor\(','System.Math.Floor(' -replace 'MathCeil\(','System.Math.Ceiling(' -replace 'MathAbs\(','System.Math.Abs('
+$source=$source -replace '(EntrySignal|double|bool) (DetectEntry|AreaEntryMatches|AreaStopBreached|CalculateTradePrices|ComputeSourceBodyPercent|EntryDistanceR|EntryFilterPass)\(','public static $1 $2('
 $source=$source -replace 'double RiskSizedVolume\(','public static double RiskSizedVolume('
 $source=$source -replace 'double PercentageRiskBudget\(','public static double PercentageRiskBudget('
 $source=$source -replace 'double &(stop|target)','ref double $1'
-$source=$source -replace '(EntrySignal|bool) (DetectEntry|AreaEntryMatches|AreaStopBreached|CalculateTradePrices)\(','public static $1 $2('
 $source=$source -replace '(?m)^   (EntrySignal|long|double|bool) (\w+);','   public $1 $2;'
-$source=$source -replace 'MathFloor\(','System.Math.Floor(' -replace 'MathCeil\(','System.Math.Ceiling('
 $adapter=@'
 public class TradeRuleTests {
 public struct MqlRates { public long time; public double open, high, low, close; }
@@ -106,4 +107,20 @@ foreach ($case in @(
 }
 $equityBudget=[TradeRuleTests]::PercentageRiskBudget(2000,1)
 Check ([Math]::Abs([TradeRuleTests]::RiskSizedVolume($equityBudget,300,0.01,100,0.01)-0.06) -lt 1e-8) 'Percentage budget not integrated with rounded volume'
+
+$sBody=Candle 10300 100 112 99 110
+Check ([Math]::Abs([TradeRuleTests]::ComputeSourceBodyPercent($sBody)-76.9230769230769) -lt 1e-6) 'Source body percent wrong'
+$flat=Candle 10300 100 100 100 100
+Check ([TradeRuleTests]::ComputeSourceBodyPercent($flat) -eq 0) 'Flat-range source body percent nonzero'
+$zone=$area; $zone.source_body_percent=25
+Check ([TradeRuleTests]::EntryDistanceR($zone,105,10) -eq 0) 'In-zone entry has nonzero chase R'
+Check ([Math]::Abs([TradeRuleTests]::EntryDistanceR($zone,115,10)-0.5) -lt 1e-9) 'Above-zone chase R wrong'
+Check ([Math]::Abs([TradeRuleTests]::EntryDistanceR($zone,90,10)-1) -lt 1e-9) 'Below-zone chase R wrong'
+Check ([TradeRuleTests]::EntryDistanceR($zone,90,0) -eq 0) 'Zero stop-distance chase R must be zero'
+Check ([TradeRuleTests]::EntryFilterPass($zone,0.5,20,1,20000,0)) 'Valid entry wrongly rejected by filters'
+Check (-not [TradeRuleTests]::EntryFilterPass($zone,0.5,30,1,20000,0)) 'Low source body allowed by filter'
+Check (-not [TradeRuleTests]::EntryFilterPass($zone,0.6,0,0.25,20000,0)) 'High chase R allowed by filter'
+Check (-not [TradeRuleTests]::EntryFilterPass($zone,0.1,0,1,10199,90)) 'Young zone allowed by age filter'
+Check ([TradeRuleTests]::EntryFilterPass($zone,0.1,0,1,15400,90)) 'Mature 90-min zone rejected by age filter'
+Check ([TradeRuleTests]::EntryFilterPass($zone,0.1,0,1,19999,90)) 'Older zone rejected by age filter'
 Write-Output "PASS: $script:passed shared trade-rule checks. This does not execute broker orders or test MT5 runtime."

@@ -12,6 +12,7 @@ struct InterestArea
    double top;
    double bottom;
    double stop;
+   double source_body_percent;
    bool consumed;
 };
 
@@ -31,6 +32,32 @@ bool AreaEntryMatches(const InterestArea &area,const MqlRates &older,
 bool AreaStopBreached(const InterestArea &area,const double bid,const double ask)
 {
    return area.direction==ENTRY_BUY ? bid<=area.stop : ask>=area.stop;
+}
+
+double ComputeSourceBodyPercent(const MqlRates &older)
+{
+   const double range=older.high-older.low;
+   if(range<=0) return 0;
+   return 100.0*MathAbs(older.close-older.open)/range;
+}
+
+double EntryDistanceR(const InterestArea &area,const double price,const double stop_distance)
+{
+   if(stop_distance<=0) return 0;
+   double distance=0;
+   if(price<area.bottom) distance=area.bottom-price;
+   else if(price>area.top) distance=price-area.top;
+   return distance/stop_distance;
+}
+
+bool EntryFilterPass(const InterestArea &area,const double chase_r,
+                     const double min_source_body_percent,const double max_entry_distance_r,
+                     const long now,const int min_age_minutes)
+{
+   if(min_source_body_percent>0 && area.source_body_percent<min_source_body_percent) return false;
+   if(max_entry_distance_r>0 && chase_r>max_entry_distance_r) return false;
+   if(min_age_minutes>0 && now-area.confirmed<(long)min_age_minutes*60) return false;
+   return true;
 }
 
 double PercentageRiskBudget(const double equity,const double percent)

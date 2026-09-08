@@ -1,6 +1,6 @@
-﻿# DhanuFX — v2.20
+﻿# DhanuFX — v2.30
 
-Higher-timeframe areas of interest, matching lower-timeframe entries, money risk sizing, wick-based SL and reward/risk TP. This version can submit market orders when attached with trading enabled. It has been compiled but has not been attached to a live chart or run against a broker during development.
+Higher-timeframe areas of interest, matching lower-timeframe entries, money risk sizing, wick-based SL, reward/risk TP and optional entry filters. This version can submit market orders when attached with trading enabled. It has been compiled but has not been attached to a live chart or run against a broker during development.
 
 ## Inputs
 
@@ -13,9 +13,14 @@ Higher-timeframe areas of interest, matching lower-timeframe entries, money risk
 | Risk_Money | 100.0 | Fixed-mode budget in account currency; preserves the current source default |
 | Risk_Percent | 1.0 | Percentage-mode budget: current equity * percent / 100 |
 | Take_Profit_RR | 2.0 | Reward divided by risk; 2.0 means 1:2 |
+| Min_HTF_Source_Body_Percent | 0.0 | Skip entries when the area's HTF source (candle[2]) body is below this % of its full high-low range. 0 = off. Baseline candidate 20 |
+| Max_Entry_Distance_R | 0.0 | Skip entries whose current quote chases more than this many R beyond the zone body (0 = inside zone). 0 = off. Baseline candidate 0.25 |
+| Min_Zone_Age_Minutes | 0 | Skip entries into areas younger than this. 0 = off. Baseline candidate 90 (one M90 period) |
 | Enable_Trading | true | False retains HTF visualization without sending orders |
 | Magic_Number | 26090901 | Identifier on EA orders |
 | Deviation_Points | 20 | Execution deviation in symbol points |
+
+Each filter is applied independently and only at the LTF qualifying entry, measured with the current executable quote. A filtered-out entry does not consume its area, so a later qualifying LTF pattern can still fill it.
 
 ## Pattern rules — both timeframes
 
@@ -63,15 +68,28 @@ Both timeframe clocks operate independently of the chart timeframe. On attachmen
 
 ## Strategy Tester
 
-Refresh Navigator, select DhanuFX\DhanuFX, and start a fresh visual test with M90/M5, Risk_Money=20 and RR 2.0. Use Every tick based on real ticks for the most useful execution test. Every tick or 1 minute OHLC can also exercise the logic, but modeled intrabar paths can change retests, invalidation and SL/TP results. Avoid coarse Open prices only runs for multi-timeframe execution.
+Refresh Navigator, select DhanuFX\DhanuFX, and start a fresh visual test with M90/M5, Risk_Money=20 (fixed baseline uses 100 for the filter experiment) and RR 2.0. Use Every tick based on real ticks for the most useful execution test. Every tick or 1 minute OHLC can also exercise the logic, but modeled intrabar paths can change retests, invalidation and SL/TP results. Avoid coarse Open prices only runs for multi-timeframe execution.
 
-Use the Journal to inspect area activation/expiry, wick SL, LTF entry direction, order return codes and fill price. No entry is expected until an HTF area forms and a later matching LTF retest occurs.
+Use the Journal to inspect area activation/expiry, wick SL, LTF entry direction, entry-filter skips, order return codes and fill price. No entry is expected until an HTF area forms and a later matching LTF retest occurs.
+
+### Filter experiment setup (docs/tester_review.md)
+
+Keep baseline M90/M5, fixed USD 100 and RR 2. Run these four passes over the same period and save each as a separate `.set` so the logged inputs identify it:
+
+| Pass | Min_HTF_Source_Body_Percent | Max_Entry_Distance_R | Min_Zone_Age_Minutes |
+|---|---|---|---|
+| Baseline | 0 | 0 | 0 |
+| Source body | 20 | 0 | 0 |
+| Entry distance | 0 | 0.25 | 0 |
+| Zone age | 0 | 0 | 90 |
+
+Compare net expectancy, net profit factor, equity drawdown, loss streak, trade count and win rate across chronological subperiods (`docs/analyze_tester_logs.py`). Only combine filters that hold up independently; then compare RR 1, 2 and 3 with the selected entries. Do not overfit a large threshold grid on this same history.
 
 ## Verification
 
 MetaEditor compilation: 0 errors, 0 warnings. Executable: DhanuFX.ex5.
 
-Test-TradeRules.ps1 executes shared MQL trade-decision/calculation bodies through .NET with syntax adaptations. All 52 checks passed: direction matching, retests, pre-activation rejection, expiry, consumed zones, wick-stop invalidation, bid/ask RR calculations, tick-size rounding and invalid stop/quote rejection, and money-risk volume rounding, minimum-lot rejection and maximum-volume caps, percentage budgets and equity changes. These checks do not submit orders or replace an MT5 runtime/backtest.
+Test-TradeRules.ps1 executes shared MQL trade-decision/calculation bodies through .NET with syntax adaptations. All 64 checks passed: direction matching, retests, pre-activation rejection, expiry, consumed zones, wick-stop invalidation, bid/ask RR calculations, tick-size rounding, invalid stop/quote rejection, money-risk volume rounding, minimum-lot rejection and maximum-volume caps, percentage budgets and equity changes, source-body percent, entry chase in R, and combined source/entry-distance/age filter decisions. These checks do not submit orders or replace an MT5 runtime/backtest.
 
 Run from this directory:
 

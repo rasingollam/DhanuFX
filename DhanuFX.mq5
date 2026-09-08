@@ -1,7 +1,7 @@
 #property copyright "DhanuFX"
-#property version   "2.20"
+#property version   "2.30"
 #property strict
-#property description "HTF areas with matching LTF entries, money risk sizing, HTF wick SL and RR TP."
+#property description "HTF areas with matching LTF entries, money risk sizing, HTF wick SL, RR TP and optional entry filters."
 
 #include "EntrySignal.mqh"
 #include "SyntheticCandle.mqh"
@@ -48,6 +48,9 @@ input RISK_TYPE Risk_Type=RISK_FIXED_MONEY; // Risk sizing method
 input double Risk_Money=100.0; // Risk per trade in account currency (before costs/slippage)
 input double Risk_Percent=1.0; // Equity percentage per trade (percentage mode only)
 input double Take_Profit_RR=2.0; // Reward / risk: 2.0 = 1:2
+input double Min_HTF_Source_Body_Percent=0.0; // Min HTF source body / full-range % (0 = off, candidate 20)
+input double Max_Entry_Distance_R=0.0; // Max entry chases R beyond zone (0 = off, candidate 0.25)
+input int Min_Zone_Age_Minutes=0; // Min zone age before entry, minutes (0 = off, candidate 90)
 input bool Enable_Trading=true; // False = draw HTF areas only
 input ulong Magic_Number=26090901; // EA order identifier
 input ulong Deviation_Points=20; // Allowed execution deviation in symbol points
@@ -72,6 +75,22 @@ int OnInit()
       || Body_to_wick_ratio>100.0)
    {
       Print("Body_to_wick_ratio must be a percentage from 0 to 100.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   if(!MathIsValidNumber(Min_HTF_Source_Body_Percent) || Min_HTF_Source_Body_Percent<0.0
+      || Min_HTF_Source_Body_Percent>100.0)
+   {
+      Print("Min_HTF_Source_Body_Percent must be a percentage from 0 to 100.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   if(!MathIsValidNumber(Max_Entry_Distance_R) || Max_Entry_Distance_R<0.0)
+   {
+      Print("Max_Entry_Distance_R must be >= 0.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   if(Min_Zone_Age_Minutes<0)
+   {
+      Print("Min_Zone_Age_Minutes must be >= 0.");
       return INIT_PARAMETERS_INCORRECT;
    }
    signal_timeframe=(Timeframe==TF_M90 ? PERIOD_M1 : (ENUM_TIMEFRAMES)Timeframe);
@@ -122,13 +141,14 @@ int OnInit()
    ObjectSetInteger(0,legend,OBJPROP_COLOR,clrGold);
    ObjectSetInteger(0,legend,OBJPROP_FONTSIZE,10);
    ObjectSetString(0,legend,OBJPROP_TEXT,"DhanuFX | Signal: "+signal_label+" | Gold = [2] body | Blue = [1] body | Dashed = zone");
-   Print("DhanuFX visualization ready: ",signal_label,
-         ", LTF=",EnumToString(Lower_Timeframe),", wick threshold ",DoubleToString(Body_to_wick_ratio,2),
-         "%, risk mode=",EnumToString(Risk_Type),", risk input=",
-         (Risk_Type==RISK_FIXED_MONEY ? Risk_Money : Risk_Percent),
-         (Risk_Type==RISK_FIXED_MONEY ? " "+AccountInfoString(ACCOUNT_CURRENCY) : "% equity"),
-         ", RR=",Take_Profit_RR,", trading=",Enable_Trading);
-   return INIT_SUCCEEDED;
+Print("DhanuFX visualization ready: ",signal_label,
+          ", LTF=",EnumToString(Lower_Timeframe),", wick threshold ",DoubleToString(Body_to_wick_ratio,2),
+          "%, risk mode=",EnumToString(Risk_Type),", risk input=",
+          (Risk_Type==RISK_FIXED_MONEY ? Risk_Money : Risk_Percent),
+          (Risk_Type==RISK_FIXED_MONEY ? " "+AccountInfoString(ACCOUNT_CURRENCY) : "% equity"),
+          ", RR=",Take_Profit_RR,", filters: source body>=",DoubleToString(Min_HTF_Source_Body_Percent,2),
+          "%, entry distance<=",DoubleToString(Max_Entry_Distance_R,3),"R, zone age>=",Min_Zone_Age_Minutes,"m, trading=",Enable_Trading);
+    return INIT_SUCCEEDED;
 }
 
 bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &previous,
@@ -324,6 +344,7 @@ void AddInterestArea(const EntrySignal signal,const MqlRates &older,
    area.top=MathMax(older.open,older.close);
    area.bottom=MathMin(older.open,older.close);
    area.stop=(signal==ENTRY_BUY ? MathMin(older.low,previous.low) : MathMax(older.high,previous.high));
+   area.source_body_percent=ComputeSourceBodyPercent(older);
    area.consumed=false;
    const int count=ArraySize(areas);
    if(ArrayResize(areas,count+1)!=count+1) { Print("Cannot allocate interest area"); return; }
@@ -443,6 +464,19 @@ void ProcessLowerTimeframe(const MqlTick &tick)
       }
       stop=NormalizeDouble(stop,_Digits);
       target=NormalizeDouble(target,_Digits);
+      const double entry_price=(signal==ENTRY_BUY ? entry_quote.ask : entry_quote.bid);
+      const double stop_distance=MathAbs(entry_price-stop);
+      const double chase_r=EntryDistanceR(areas[i],entry_price,stop_distance);
+      if(!EntryFilterPass(areas[i],chase_r,Min_HTF_Source_Body_Percent,Max_Entry_Distance_R,
+                          (long)entry_quote.time,Min_Zone_Age_Minutes))
+      {
+         Print("Entry filter skipped | ",signal==ENTRY_BUY ? "BUY" : "SELL",
+               " | zone=",TimeToString(areas[i].confirmed),
+               " | source body %=",DoubleToString(areas[i].source_body_percent,2),
+               " | chase R=",DoubleToString(chase_r,3),
+               " | zone age min=",DoubleToString((long)(entry_quote.time-areas[i].confirmed)/60.0,1));
+         return;
+      }
       double volume=0,estimated_loss=0,risk_budget=0;
       if(!CalculateRiskVolume(signal,entry_quote,stop,volume,estimated_loss,risk_budget)) return;
       const string comment="DhanuFX "+IntegerToString((long)areas[i].confirmed);
@@ -458,6 +492,10 @@ void ProcessLowerTimeframe(const MqlTick &tick)
             " | zone=",TimeToString(areas[i].confirmed)," | SL=",stop," TP=",target,
             " | lots=",volume," | estimated risk=",estimated_loss," ",AccountInfoString(ACCOUNT_CURRENCY),
             " | budget=",risk_budget," | risk mode=",EnumToString(Risk_Type),
+            " | entry spread=",DoubleToString(entry_quote.ask-entry_quote.bid,_Digits),
+            " | zone age min=",DoubleToString((long)(entry_quote.time-areas[i].confirmed)/60.0,1),
+            " | chase R=",DoubleToString(chase_r,4),
+            " | HTF body %=",DoubleToString(areas[i].source_body_percent,2),
             " | submitted=",submitted," | retcode=",code," ",trade.ResultRetcodeDescription(),
             " | deal=",trade.ResultDeal()," | fill=",trade.ResultPrice());
       return;
