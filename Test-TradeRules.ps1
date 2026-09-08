@@ -10,6 +10,7 @@ $source=$source -replace 'const (MqlRates|InterestArea) &','$1 '
 $source=$source -replace 'const (double|datetime|EntrySignal) ','$1 '
 $source=$source -replace 'datetime','long'
 $source=$source -replace 'double RiskSizedVolume\(','public static double RiskSizedVolume('
+$source=$source -replace 'double PercentageRiskBudget\(','public static double PercentageRiskBudget('
 $source=$source -replace 'double &(stop|target)','ref double $1'
 $source=$source -replace '(EntrySignal|bool) (DetectEntry|AreaEntryMatches|AreaStopBreached|CalculateTradePrices)\(','public static $1 $2('
 $source=$source -replace '(?m)^   (EntrySignal|long|double|bool) (\w+);','   public $1 $2;'
@@ -96,4 +97,13 @@ foreach ($case in @(
     $volume=[TradeRuleTests]::RiskSizedVolume($case[0],$case[1],$case[2],$case[3],$case[4])
     Check ([Math]::Abs($volume-$case[5]) -lt 1e-8) "Incorrect risk-sized volume: $case -> $volume"
 }
+foreach ($case in @(
+    @(2000,1,20), @(1500,1,15), @(2500,1,25), @(10000,0.5,50),
+    @(0,1,0), @(-100,1,0), @(2000,0,0), @(2000,101,0), @(2000,100,2000)
+)) {
+    $budget=[TradeRuleTests]::PercentageRiskBudget($case[0],$case[1])
+    Check ([Math]::Abs($budget-$case[2]) -lt 1e-8) "Percentage budget failed: $case"
+}
+$equityBudget=[TradeRuleTests]::PercentageRiskBudget(2000,1)
+Check ([Math]::Abs([TradeRuleTests]::RiskSizedVolume($equityBudget,300,0.01,100,0.01)-0.06) -lt 1e-8) 'Percentage budget not integrated with rounded volume'
 Write-Output "PASS: $script:passed shared trade-rule checks. This does not execute broker orders or test MT5 runtime."

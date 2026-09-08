@@ -33,6 +33,12 @@ bool AreaStopBreached(const InterestArea &area,const double bid,const double ask
    return area.direction==ENTRY_BUY ? bid<=area.stop : ask>=area.stop;
 }
 
+double PercentageRiskBudget(const double equity,const double percent)
+{
+   if(equity<=0 || percent<=0 || percent>100) return 0;
+   return equity*(percent/100.0);
+}
+
 double RiskSizedVolume(const double risk,const double loss_per_lot,const double minimum,
                        const double maximum,const double step)
 {

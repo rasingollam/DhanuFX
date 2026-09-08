@@ -1,4 +1,4 @@
-﻿# DhanuFX — v2.10
+﻿# DhanuFX — v2.20
 
 Higher-timeframe areas of interest, matching lower-timeframe entries, money risk sizing, wick-based SL and reward/risk TP. This version can submit market orders when attached with trading enabled. It has been compiled but has not been attached to a live chart or run against a broker during development.
 
@@ -9,7 +9,9 @@ Higher-timeframe areas of interest, matching lower-timeframe entries, money risk
 | Timeframe | M90 | Higher timeframe defining the area; standard MT5 dropdown periods plus M90 |
 | Lower_Timeframe | M5 | Entry timeframe; must be strictly lower than Timeframe |
 | Body_to_wick_ratio | 20 | Strict maximum directional wick percentage, shared by both timeframes |
-| Risk_Money | 20.0 | Estimated loss at SL in account currency; volume is calculated automatically |
+| Risk_Type | Fixed money | Choose fixed money or percentage of current account equity |
+| Risk_Money | 100.0 | Fixed-mode budget in account currency; preserves the current source default |
+| Risk_Percent | 1.0 | Percentage-mode budget: current equity * percent / 100 |
 | Take_Profit_RR | 2.0 | Reward divided by risk; 2.0 means 1:2 |
 | Enable_Trading | true | False retains HTF visualization without sending orders |
 | Magic_Number | 26090901 | Identifier on EA orders |
@@ -38,7 +40,7 @@ The EA does not enter while any position or pending order already exists on the 
 
 ## Money risk sizing
 
-Risk_Money replaces Lot_Size. Default 20 means 20 units of the account currency (USD 20 on a USD account). The EA uses MT5 OrderCalcProfit at the current entry quote and normalized SL to calculate loss per lot. It rounds volume down to the broker step and caps it at the symbol maximum/directional limit. If the smallest lot exceeds the budget, it skips the entry rather than increasing risk. Calculated volume and estimated SL loss are logged. Risk covers price movement to SL; commission, swap, slippage and gaps can make actual loss exceed the input. Existing positions are not resized. Old set files should be updated to use Risk_Money.
+Risk_Type selects the budget calculation. Fixed money uses Risk_Money (current default 100 in account currency). Percentage mode uses Risk_Percent (default 1%) of current account equity, including floating P/L. The equity budget is recalculated once immediately before each candidate entry; 1% of 2,000 is 20. Only the selected mode input is validated/used. Nonpositive equity skips percentage-mode entries. The EA uses MT5 OrderCalcProfit at the current entry quote and normalized SL to calculate loss per lot. It rounds volume down to the broker step and caps it at the symbol maximum/directional limit. If the smallest lot exceeds the budget, it skips the entry rather than increasing risk. Calculated volume and estimated SL loss are logged. Risk covers price movement to SL; commission, swap, slippage and gaps can make actual loss exceed the input. Existing positions are not resized. Old set files should be updated to use Risk_Money.
 
 ## SL and TP
 
@@ -69,7 +71,7 @@ Use the Journal to inspect area activation/expiry, wick SL, LTF entry direction,
 
 MetaEditor compilation: 0 errors, 0 warnings. Executable: DhanuFX.ex5.
 
-Test-TradeRules.ps1 executes shared MQL trade-decision/calculation bodies through .NET with syntax adaptations. All 42 checks passed: direction matching, retests, pre-activation rejection, expiry, consumed zones, wick-stop invalidation, bid/ask RR calculations, tick-size rounding and invalid stop/quote rejection, and money-risk volume rounding, minimum-lot rejection and maximum-volume caps. These checks do not submit orders or replace an MT5 runtime/backtest.
+Test-TradeRules.ps1 executes shared MQL trade-decision/calculation bodies through .NET with syntax adaptations. All 52 checks passed: direction matching, retests, pre-activation rejection, expiry, consumed zones, wick-stop invalidation, bid/ask RR calculations, tick-size rounding and invalid stop/quote rejection, and money-risk volume rounding, minimum-lot rejection and maximum-volume caps, percentage budgets and equity changes. These checks do not submit orders or replace an MT5 runtime/backtest.
 
 Run from this directory:
 
@@ -78,4 +80,5 @@ Run from this directory:
 ```
 
 Compile with D:\Trading\MetaEditor64.exe using F7 or `/compile:"<absolute source path>" /log`.
+
 

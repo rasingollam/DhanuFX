@@ -1,5 +1,5 @@
 #property copyright "DhanuFX"
-#property version   "2.10"
+#property version   "2.20"
 #property strict
 #property description "HTF areas with matching LTF entries, money risk sizing, HTF wick SL and RR TP."
 
@@ -35,10 +35,18 @@ enum SIGNAL_TIMEFRAME
    TF_MN1=PERIOD_MN1   // MN1 (1 month)
 };
 
+enum RISK_TYPE
+{
+   RISK_FIXED_MONEY=0,    // Fixed money (account currency)
+   RISK_EQUITY_PERCENT=1  // Percentage of current account equity
+};
+
 input SIGNAL_TIMEFRAME Timeframe=TF_M90; // Higher timeframe / area of interest
 input SIGNAL_TIMEFRAME Lower_Timeframe=TF_M5; // Lower timeframe / entry confirmation
 input double Body_to_wick_ratio=20.0; // Maximum directional wick percentage (strictly less)
+input RISK_TYPE Risk_Type=RISK_FIXED_MONEY; // Risk sizing method
 input double Risk_Money=100.0; // Risk per trade in account currency (before costs/slippage)
+input double Risk_Percent=1.0; // Equity percentage per trade (percentage mode only)
 input double Take_Profit_RR=2.0; // Reward / risk: 2.0 = 1:2
 input bool Enable_Trading=true; // False = draw HTF areas only
 input ulong Magic_Number=26090901; // EA order identifier
@@ -71,10 +79,16 @@ int OnInit()
    if(signal_seconds<=0) return INIT_PARAMETERS_INCORRECT;
    lower_seconds=(Lower_Timeframe==TF_M90 ? 5400 : PeriodSeconds((ENUM_TIMEFRAMES)Lower_Timeframe));
    if(lower_seconds<=0 || lower_seconds>=signal_seconds
-      || !MathIsValidNumber(Risk_Money) || Risk_Money<=0
       || !MathIsValidNumber(Take_Profit_RR) || Take_Profit_RR<=0)
    {
-      Print("Lower timeframe must be below HTF. Risk_Money and Take_Profit_RR must be positive.");
+      Print("Lower timeframe must be below HTF. Take_Profit_RR must be positive.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   if((Risk_Type!=RISK_FIXED_MONEY && Risk_Type!=RISK_EQUITY_PERCENT)
+      || (Risk_Type==RISK_FIXED_MONEY && (!MathIsValidNumber(Risk_Money) || Risk_Money<=0))
+      || (Risk_Type==RISK_EQUITY_PERCENT && (!MathIsValidNumber(Risk_Percent) || Risk_Percent<=0 || Risk_Percent>100)))
+   {
+      Print("Invalid risk input: fixed money must be positive; equity percent must be greater than 0 and at most 100.");
       return INIT_PARAMETERS_INCORRECT;
    }
    const double volume_min=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
@@ -110,7 +124,10 @@ int OnInit()
    ObjectSetString(0,legend,OBJPROP_TEXT,"DhanuFX | Signal: "+signal_label+" | Gold = [2] body | Blue = [1] body | Dashed = zone");
    Print("DhanuFX visualization ready: ",signal_label,
          ", LTF=",EnumToString(Lower_Timeframe),", wick threshold ",DoubleToString(Body_to_wick_ratio,2),
-         "%, risk=",Risk_Money," ",AccountInfoString(ACCOUNT_CURRENCY),", RR=",Take_Profit_RR,", trading=",Enable_Trading);
+         "%, risk mode=",EnumToString(Risk_Type),", risk input=",
+         (Risk_Type==RISK_FIXED_MONEY ? Risk_Money : Risk_Percent),
+         (Risk_Type==RISK_FIXED_MONEY ? " "+AccountInfoString(ACCOUNT_CURRENCY) : "% equity"),
+         ", RR=",Take_Profit_RR,", trading=",Enable_Trading);
    return INIT_SUCCEEDED;
 }
 
@@ -342,8 +359,16 @@ bool SymbolHasExposure()
 }
 
 bool CalculateRiskVolume(const EntrySignal signal,const MqlTick &quote,const double stop,
-                         double &volume,double &estimated_loss)
+                         double &volume,double &estimated_loss,double &risk_budget)
 {
+   // Snapshot equity once per candidate, including floating P/L on the account.
+   risk_budget=(Risk_Type==RISK_FIXED_MONEY ? Risk_Money
+                : PercentageRiskBudget(AccountInfoDouble(ACCOUNT_EQUITY),Risk_Percent));
+   if(!MathIsValidNumber(risk_budget) || risk_budget<=0)
+   {
+      Print("Entry skipped: risk budget is not positive (check account equity).");
+      return false;
+   }
    const ENUM_ORDER_TYPE type=(signal==ENTRY_BUY ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
    const double entry=(signal==ENTRY_BUY ? quote.ask : quote.bid);
    const double minimum=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
@@ -359,17 +384,17 @@ bool CalculateRiskVolume(const EntrySignal signal,const MqlTick &quote,const dou
       Print("Entry skipped: cannot calculate stop loss in account currency. Error=",GetLastError());
       return false;
    }
-   volume=NormalizeDouble(RiskSizedVolume(Risk_Money,-reference_profit/minimum,minimum,maximum,step),8);
+   volume=NormalizeDouble(RiskSizedVolume(risk_budget,-reference_profit/minimum,minimum,maximum,step),8);
    if(volume<=0)
    {
-      Print("Entry skipped: minimum lot exceeds risk budget ",Risk_Money," ",AccountInfoString(ACCOUNT_CURRENCY));
+      Print("Entry skipped: minimum lot exceeds risk budget ",risk_budget," ",AccountInfoString(ACCOUNT_CURRENCY));
       return false;
    }
    double profit=0;
    if(!OrderCalcProfit(type,_Symbol,volume,entry,stop,profit) || !MathIsValidNumber(profit) || profit>=0)
       return false;
    estimated_loss=-profit;
-   if(estimated_loss>Risk_Money+1e-8)
+   if(estimated_loss>risk_budget+1e-8)
    {
       Print("Entry skipped: calculated volume exceeds risk budget.");
       return false;
@@ -418,8 +443,8 @@ void ProcessLowerTimeframe(const MqlTick &tick)
       }
       stop=NormalizeDouble(stop,_Digits);
       target=NormalizeDouble(target,_Digits);
-      double volume=0,estimated_loss=0;
-      if(!CalculateRiskVolume(signal,entry_quote,stop,volume,estimated_loss)) return;
+      double volume=0,estimated_loss=0,risk_budget=0;
+      if(!CalculateRiskVolume(signal,entry_quote,stop,volume,estimated_loss,risk_budget)) return;
       const string comment="DhanuFX "+IntegerToString((long)areas[i].confirmed);
       const bool submitted=(signal==ENTRY_BUY
          ? trade.Buy(volume,_Symbol,0,stop,target,comment)
@@ -432,6 +457,7 @@ void ProcessLowerTimeframe(const MqlTick &tick)
       Print("LTF entry | ",EnumToString(Lower_Timeframe)," | ",signal==ENTRY_BUY ? "BUY" : "SELL",
             " | zone=",TimeToString(areas[i].confirmed)," | SL=",stop," TP=",target,
             " | lots=",volume," | estimated risk=",estimated_loss," ",AccountInfoString(ACCOUNT_CURRENCY),
+            " | budget=",risk_budget," | risk mode=",EnumToString(Risk_Type),
             " | submitted=",submitted," | retcode=",code," ",trade.ResultRetcodeDescription(),
             " | deal=",trade.ResultDeal()," | fill=",trade.ResultPrice());
       return;
