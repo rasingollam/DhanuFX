@@ -11,7 +11,7 @@ stamp=r'(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2})'
 dt=lambda s: datetime.strptime(s,'%Y.%m.%d %H:%M:%S')
 runs=[]; run=None
 for number,line in enumerate(lines,1):
-    if 'testing of Experts\\DhanuFX\\DhanuFX.ex5' in line:
+    if 'testing of Experts\\DhanuFX\\DhanuFX.ex5' in line or 'testing of Experts\\DhanuFX\\Luminar-2.ex5' in line:
         run={'start_line':number,'header':line,'inputs':{},'entries':[],'areas':{},'outcomes':{},'fills':{},'warnings':[]}
         runs.append(run)
     if run is None: continue

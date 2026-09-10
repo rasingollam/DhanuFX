@@ -1,4 +1,4 @@
-#property copyright "DhanuFX"
+#property copyright "Luminar-2"
 #property version   "3.00"
 #property strict
 #property description "HTF signal candle drawing and area selection with a configurable directional wick threshold. Visualization only; no order submission."
@@ -59,8 +59,10 @@ int OnInit()
    if(signal_seconds<=0) return INIT_PARAMETERS_INCORRECT;
    signal_label=(SIGNAL_TIMEFRAME==TF_M90 ? "M90" : EnumToString(signal_timeframe));
    StringReplace(signal_label,"PERIOD_","");
-   object_prefix="DhanuFX_"+_Symbol+"_"+signal_label+"_";
-   // Remove stale zones from ALL earlier timeframes/versions on this chart.
+   object_prefix="Luminar_"+_Symbol+"_"+signal_label+"_";
+   // Remove stale zones from ALL earlier timeframes/versions on this chart,
+   // including drawings left by the former DhanuFX releases.
+   ObjectsDeleteAll(0,"Luminar_"+_Symbol+"_");
    ObjectsDeleteAll(0,"DhanuFX_"+_Symbol+"_");
    ArrayResize(areas,0);
    last_bar=0;
@@ -73,8 +75,8 @@ int OnInit()
    ObjectSetInteger(0,legend,OBJPROP_YDISTANCE,24);
    ObjectSetInteger(0,legend,OBJPROP_COLOR,clrGold);
    ObjectSetInteger(0,legend,OBJPROP_FONTSIZE,10);
-   ObjectSetString(0,legend,OBJPROP_TEXT,"DhanuFX | Signal: "+signal_label+" | Gold = [2] body | Blue = [1] body | Dashed = zone");
-   Print("DhanuFX visualization ready: ",signal_label,
+   ObjectSetString(0,legend,OBJPROP_TEXT,"Luminar-2 | Signal: "+signal_label+" | Gold = [2] body | Blue = [1] body | Dashed = zone");
+   Print("Luminar-2 visualization ready: ",signal_label,
          ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%.");
    return INIT_SUCCEEDED;
 }

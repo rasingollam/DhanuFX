@@ -1,4 +1,4 @@
-﻿# DhanuFX — v3.00
+﻿# Luminar-2 — v3.00
 
 Higher-timeframe signal candle drawing with area selection and a configurable directional wick threshold. Visualization only: this version never submits orders.
 
@@ -36,11 +36,11 @@ The EA clock operates independently of the chart timeframe. On attachment, the E
 
 ## Strategy Tester
 
-Refresh Navigator, select DhanuFX\DhanuFX, and start a fresh visual test on any period; the EA reads its own `SIGNAL_TIMEFRAME`. Use Every tick based on real ticks for the most useful test. Use the Journal to inspect signal evidence and area activation/invalidation. No entries or orders are sent in any mode.
+Refresh Navigator, select Luminar-2, and start a fresh visual test on any period; the EA reads its own `SIGNAL_TIMEFRAME`. Use Every tick based on real ticks for the most useful test. Use the Journal to inspect signal evidence and area activation/invalidation. No entries or orders are sent in any mode.
 
 ## Project layout
 
-- `DhanuFX.mq5` — the EA; includes only from `core\`.
+- `Luminar-2.mq5` — the EA; includes only from `core\`.
 - `core/` — shared MQL5 helper/libraries: `EntrySignal.mqh`, `SyntheticCandle.mqh`, `SignalGeometry.mqh`, `TradeRules.mqh`.
 - `scripts/` — developer tooling: `Test-TradeRules.ps1` (CLR unit harness) and `analyze_tester_logs.py` (writes evidence to `docs\tester_analysis.json`).
 - `docs/` — backtest evidence (`tester_analysis.json`, `tester_review.md`) and design notes (`idea.md`).
@@ -49,7 +49,7 @@ Backtest history from the trading versions (v2.x) lives in `docs/tester_review.m
 
 ## Verification
 
-MetaEditor compilation: 0 errors, 0 warnings. Executable: DhanuFX.ex5.
+MetaEditor compilation: 0 errors, 0 warnings. Executable: Luminar-2.ex5.
 
 Test-TradeRules.ps1 executes the shared MQL decision/calculation bodies through .NET with syntax adaptations. These checks do not submit orders or replace an MT5 runtime/backtest.
 
