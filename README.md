@@ -13,8 +13,8 @@ Higher-timeframe signal candle drawing with area selection and a configurable di
 
 At a new candle, [1] is the candle that just closed and [2] is its predecessor.
 
-- Sell: [2] bullish, [1] bearish, [1] close below [2] open, [1] high above [2] high, and lower wick / (body + lower wick) * 100 strictly below the threshold.
-- Buy: [2] bearish, [1] bullish, [1] close above [2] open, [1] low below [2] low, and upper wick / (body + upper wick) * 100 strictly below the threshold.
+- Sell: [2] bullish, [1] bearish, [1] close below [2] open, [1] high above [2] high, [1] lower wick / (body + lower wick) * 100 strictly below the threshold, and [2] lower wick / (body + lower wick) * 100 also strictly below the threshold.
+- Buy: [2] bearish, [1] bullish, [1] close above [2] open, [1] low below [2] low, [1] upper wick / (body + upper wick) * 100 strictly below the threshold, and [2] upper wick / (body + upper wick) * 100 also strictly below the threshold.
 - Body = absolute open/close difference. Equality and dojis do not qualify.
 
 ## Visualization

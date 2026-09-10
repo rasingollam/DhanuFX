@@ -43,9 +43,21 @@ $none=[TradeRuleTests+EntrySignal]::ENTRY_NONE
 $area=New-Object 'TradeRuleTests+InterestArea'
 $area.direction=$buy; $area.confirmed=10000; $area.available=10001
 $area.expires=37000; $area.top=110; $area.bottom=100; $area.stop=90; $area.consumed=$false
-$older=Candle 10300 110 112 99 101
+$older=Candle 10300 110 103 99 101
 $previous=Candle 10600 100 114 98 113
 Check ([TradeRuleTests]::DetectEntry($older,$previous,20) -eq $buy) 'LTF buy fixture invalid'
+# 7th condition: the source candle[2] must be a clean body too
+# (SELL: lower wick under ratio, BUY: upper wick under ratio).
+$sOlder=Candle 10300 100 110 99 108
+$sPrevious=Candle 10600 112 118 99 99.5
+Check ([TradeRuleTests]::DetectEntry($sOlder,$sPrevious,20) -eq $sell) 'Sell source-close signal rejected'
+$sDirty=$sOlder; $sDirty.low=93
+Check ([TradeRuleTests]::DetectEntry($sDirty,$sPrevious,20) -eq $none) 'Sell accepted with long source down wick'
+$bClean=Candle 10300 112 105 99 103
+$bPrevious=Candle 10600 100 114 98 113
+Check ([TradeRuleTests]::DetectEntry($bClean,$bPrevious,20) -eq $buy) 'Clean buy source rejected'
+$bDirty=$bClean; $bDirty.high=112
+Check ([TradeRuleTests]::DetectEntry($bDirty,$bPrevious,20) -eq $none) 'Buy accepted with long source up wick'
 Check ([TradeRuleTests]::AreaEntryMatches($area,$older,$previous,10900,$buy)) 'Valid retest rejected'
 Check (-not [TradeRuleTests]::AreaEntryMatches($area,$older,$previous,10900,$sell)) 'Opposite direction allowed'
 Check (-not [TradeRuleTests]::AreaEntryMatches($area,$older,$previous,10900,$none)) 'Missing pattern allowed'

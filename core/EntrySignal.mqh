@@ -14,16 +14,24 @@ EntrySignal DetectEntry(const MqlRates &older,const MqlRates &previous,
    {
       const double body=previous.open-previous.close;
       const double wick=previous.close-previous.low;
-      if(wick>=0.0 && previous.close<older.open && previous.high>older.high
-         && 100.0*wick<max_wick_percent*(body+wick))
+      const double source_body=older.close-older.open;
+      const double source_wick=older.open-older.low;
+      if(wick>=0.0 && source_wick>=0.0
+         && previous.close<older.open && previous.high>older.high
+         && 100.0*wick<max_wick_percent*(body+wick)
+         && 100.0*source_wick<max_wick_percent*(source_body+source_wick))
          return ENTRY_SELL;
    }
    else if(older.close<older.open && previous.close>previous.open)
    {
       const double body=previous.close-previous.open;
       const double wick=previous.high-previous.close;
-      if(wick>=0.0 && previous.close>older.open && previous.low<older.low
-         && 100.0*wick<max_wick_percent*(body+wick))
+      const double source_body=older.open-older.close;
+      const double source_wick=older.high-older.close;
+      if(wick>=0.0 && source_wick>=0.0
+         && previous.close>older.open && previous.low<older.low
+         && 100.0*wick<max_wick_percent*(body+wick)
+         && 100.0*source_wick<max_wick_percent*(source_body+source_wick))
          return ENTRY_BUY;
    }
    return ENTRY_NONE;
