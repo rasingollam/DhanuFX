@@ -10,7 +10,7 @@ $source=$source -replace '(?m)^#.*$',''
 $source=$source -replace 'enum EntrySignal','public enum EntrySignal'
 $source=$source -replace 'struct InterestArea','public struct InterestArea'
 $source=$source -replace 'const (MqlRates|InterestArea) &','$1 '
-$source=$source -replace 'const (double|datetime|EntrySignal) ','$1 '
+$source=$source -replace 'const (double|datetime|EntrySignal|bool) ','$1 '
 $source=$source -replace 'const (long|int|ulong|uint) ','$1 '
 $source=$source -replace 'datetime','long'
 $source=$source -replace 'MathFloor\(','System.Math.Floor(' -replace 'MathCeil\(','System.Math.Ceiling(' -replace 'MathAbs\(','System.Math.Abs(' -replace 'MathMax\(','System.Math.Max(' -replace 'MathMin\(','System.Math.Min('
@@ -19,6 +19,7 @@ $source=$source -replace 'double RiskSizedVolume\(','public static double RiskSi
 $source=$source -replace 'double PercentageRiskBudget\(','public static double PercentageRiskBudget('
 $source=$source -replace 'double &(stop|target)','ref double $1'
 $source=$source -replace 'int &anchor_shift','ref int anchor_shift'
+$source=$source -replace '1\.0e100,-1\.0e100,1\.0e100,-1\.0e100,anchor_shift\)','1.0e100,-1.0e100,1.0e100,-1.0e100,ref anchor_shift)'
 $source=$source -replace '(?m)^   (EntrySignal|long|double|bool) (\w+);','   public $1 $2;'
 $adapter=@'
 public class TradeRuleTests {
@@ -50,6 +51,9 @@ $anchor=Candle 10600 110 103 99 101
 $breaker=Candle 10900 100 114 98 113
 Check ([TradeRuleTests]::DetectEntry($source,$anchor,$breaker,20,[ref]$b0) -eq $buy -and $b0 -eq 2) 'Fast buy (candle[1] breaks candle[2]) rejected'
 $b0=0
+$anchorSweepBuy=Candle 10900 100 114 100 113
+Check ([TradeRuleTests]::DetectEntry($source,$anchor,$anchorSweepBuy,20,1.0e100,-1.0e100,1.0e100,100,[ref]$b0) -eq $buy -and $b0 -eq 2) 'Fast buy rejected anchor prior-low sweep'
+$b0=0
 $dirtyAnchor=$anchor; $dirtyAnchor.high=112
 Check ([TradeRuleTests]::DetectEntry($source,$dirtyAnchor,$breaker,20,[ref]$b0) -eq $none) 'Buy accepted with long anchor up wick (rule 7)'
 # Two-candle break: candle[3] (source) is the anchor; candles[2]+[1] complete the break (anchor_shift=3).
@@ -57,6 +61,10 @@ $sSlowSource=Candle 10300 112 105 99 103
 $sSlowMid=Candle 10600 100 114 97 101
 $sSlowSignal=Candle 10900 100 114 98 113
 Check ([TradeRuleTests]::DetectEntry($sSlowSource,$sSlowMid,$sSlowSignal,20,[ref]$b0) -eq $buy -and $b0 -eq 3) 'Slow buy (two candles break candle[3]) rejected'
+$b0=0
+$slowAnchorSweepMid=Candle 10600 100 114 100 101
+$slowAnchorSweepSignal=Candle 10900 100 114 100 113
+Check ([TradeRuleTests]::DetectEntry($sSlowSource,$slowAnchorSweepMid,$slowAnchorSweepSignal,20,1.0e100,100,1.0e100,-1.0e100,[ref]$b0) -eq $buy -and $b0 -eq 3) 'Slow buy rejected anchor prior-low sweep'
 $b0=0
 Check (-not ([TradeRuleTests]::DetectEntry($sSlowSource,$sSlowMid,$sSlowMid,20,[ref]$b0) -eq $buy)) 'Slow buy with mid run-up allowed'
 $dirtyMid=Candle 10600 110 120 90 100
@@ -68,12 +76,17 @@ $sellAnchor=Candle 10600 100 110 99 108
 $sellBreaker=Candle 10900 112 118 99 99.5
 Check ([TradeRuleTests]::DetectEntry($source,$sellAnchor,$sellBreaker,20,[ref]$b0) -eq $sell -and $b0 -eq 2) 'Fast sell (candle[1] breaks candle[2]) rejected'
 $b0=0
+$anchorSweepSell=Candle 10900 105 109 99 99.5
+Check ([TradeRuleTests]::DetectEntry($source,$sellAnchor,$anchorSweepSell,20,1.0e100,-1.0e100,105,-1.0e100,[ref]$b0) -eq $sell -and $b0 -eq 2) 'Fast sell rejected anchor prior-high sweep'
+$b0=0
 $dirtySell=$sellAnchor; $dirtySell.low=93
 Check ([TradeRuleTests]::DetectEntry($source,$dirtySell,$sellBreaker,20,[ref]$b0) -eq $none) 'Sell accepted with long anchor down wick (rule 7)'
 $sslSource=Candle 10300 100 112 99 108
 $sslMid=Candle 10600 116 120 116 117
 $sslSignal=Candle 10900 108 110 95 95.5
 Check ([TradeRuleTests]::DetectEntry($sslSource,$sslMid,$sslSignal,20,[ref]$b0) -eq $sell -and $b0 -eq 3) 'Slow sell (two candles break candle[3]) rejected'
+$slowAnchorSweepMid=Candle 10600 110 111 110 110.5
+Check ([TradeRuleTests]::DetectEntry($sslSource,$slowAnchorSweepMid,$sslSignal,20,105,-1.0e100,1.0e100,-1.0e100,[ref]$b0) -eq $sell -and $b0 -eq 3) 'Slow sell rejected anchor prior-high sweep'
 $gapSell=$sslSignal; $gapSell.open=95
 Check ([TradeRuleTests]::DetectEntry($sslSource,$sslMid,$gapSell,20,[ref]$b0) -eq $none) 'Slow sell allowed candle[1] to open beyond anchor'
 $b0=0

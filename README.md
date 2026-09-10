@@ -8,6 +8,7 @@ Higher-timeframe signal candle drawing with area selection and a configurable di
 |---|---|---|
 | SIGNAL_TIMEFRAME | M90 | Higher timeframe for the signal and area of interest; standard MT5 dropdown periods plus M90 |
 | Body_to_wick_ratio | 20 | Strict maximum directional wick percentage, in %; 0..100 |
+| Anchor_sweep_lookback | 3 | Number of preceding HTF candles used for the alternate anchor high/low sweep |
 
 ## Pattern rules
 
@@ -17,15 +18,15 @@ At a new candle, [1] is the candle that just closed, [2] its predecessor, [3] th
 - Two-candle break (`anchor [3]`): the anchor is candle[3] and candles[2]+[1] form one synthetic breaker: open = [2] open, close = [1] close, high/low = the combined extremes. Candle[1] must open on the unbroken side of the anchor open, then close across it. The synthetic candle's wick is used for the threshold.
 
 Sell:
-- Anchor bullish; breaker close below breaker open; breaker close below anchor open; breaker high above anchor high; breaker lower wick / (body + lower wick) * 100 strictly below the threshold; anchor lower wick / (body + lower wick) * 100 also strictly below the threshold. For anchor [2], the breaker is [1]; for anchor [3], it is the synthetic [2]+[1] candle.
+- Anchor bullish; breaker close below breaker open; breaker close below anchor open; either breaker high above anchor high or anchor high above the highest high of the preceding `Anchor_sweep_lookback` HTF candles; breaker lower wick / (body + lower wick) * 100 strictly below the threshold; anchor lower wick / (body + lower wick) * 100 also strictly below the threshold. For anchor [2], the breaker is [1]; for anchor [3], it is the synthetic [2]+[1] candle.
 
-Buy (mirror): anchor bearish; breaker close above breaker open; breaker close above anchor open; breaker low below anchor low; breaker upper wick and anchor upper wick each under the threshold.
+Buy (mirror): anchor bearish; breaker close above breaker open; breaker close above anchor open; either breaker low below anchor low or anchor low below the lowest low of the preceding `Anchor_sweep_lookback` HTF candles; breaker upper wick and anchor upper wick each under the threshold.
 
 - Body = absolute open/close difference. Equality and dojis do not qualify.
 
 ## Visualization
 
-Gold boxes show the selected HTF anchor body ([2] or [3], depending on the variant), blue boxes show the break candle[1], and dashed green/red boxes project the buy/sell area of interest. Labels identify the HTF and the anchor index. On each new signal the EA draws the two candle bodies and projects the zone; stale drawings from earlier timeframes/versions are removed on init.
+Gold boxes show the selected HTF anchor body ([2] or [3], depending on the variant), blue boxes show the break candle[1], and dashed green/red boxes project the buy/sell area of interest. Labels identify the HTF and the anchor index. Each detected signal also receives a checklist showing direction, close, open-side, both sweep alternatives, and wick checks. On each new signal the EA draws the candle bodies and projects the zone; stale drawings from earlier timeframes/versions are removed on init.
 
 ## Area selection
 

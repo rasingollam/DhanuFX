@@ -36,6 +36,7 @@ enum SIGNAL_PERIOD
 
 input SIGNAL_PERIOD SIGNAL_TIMEFRAME=TF_M90; // Higher timeframe / signal candle
 input double Body_to_wick_ratio=20.0; // Maximum directional wick percentage (strictly less)
+input int Anchor_sweep_lookback=3; // Prior HTF candles used for alternate anchor high/low sweep
 
 InterestArea areas[];
 datetime last_bar=0;
@@ -60,9 +61,9 @@ void UpdateSignalCounter()
 int OnInit()
 {
    if(!MathIsValidNumber(Body_to_wick_ratio) || Body_to_wick_ratio<0.0
-      || Body_to_wick_ratio>100.0)
+      || Body_to_wick_ratio>100.0 || Anchor_sweep_lookback<1)
    {
-      Print("Body_to_wick_ratio must be a percentage from 0 to 100.");
+      Print("Body_to_wick_ratio must be 0..100 and Anchor_sweep_lookback must be at least 1.");
       return INIT_PARAMETERS_INCORRECT;
    }
    signal_timeframe=(SIGNAL_TIMEFRAME==TF_M90 ? PERIOD_M1 : (ENUM_TIMEFRAMES)SIGNAL_TIMEFRAME);
@@ -103,7 +104,8 @@ int OnInit()
 }
 
 bool DrawSignal(const EntrySignal signal,const MqlRates &anchor,const MqlRates &mid,const MqlRates &breaker,
-                const datetime confirmation,const int anchor_shift,const int breaker_shift)
+                const datetime confirmation,const int anchor_shift,const int breaker_shift,
+                const double prior_high,const double prior_low)
 {
    const string direction=(signal==ENTRY_SELL ? "SELL" : "BUY");
    const string name=object_prefix+direction+"_"+IntegerToString((long)anchor.time);
@@ -225,6 +227,40 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &anchor,const MqlRates &
       if(!ObjectSetInteger(0,labelMid,OBJPROP_SELECTABLE,false)) success=false;
       if(!ObjectSetString(0,labelMid,OBJPROP_TOOLTIP,"MIDDLE BODY [2] | "+details)) success=false;
    }
+   const bool is_sell=(signal==ENTRY_SELL);
+   const double breaker_open=(anchor_shift==3 ? mid.open : breaker.open);
+   const double breaker_close=breaker.close;
+   const double breaker_high=(anchor_shift==3 ? MathMax(mid.high,breaker.high) : breaker.high);
+   const double breaker_low=(anchor_shift==3 ? MathMin(mid.low,breaker.low) : breaker.low);
+   const double breaker_body=MathAbs(breaker_close-breaker_open);
+   const double breaker_wick=(is_sell ? breaker_close-breaker_low : breaker_high-breaker_close);
+   const double anchor_body=MathAbs(anchor.close-anchor.open);
+   const double anchor_wick=(is_sell ? anchor.open-anchor.low : anchor.high-anchor.close);
+   const bool breaker_sweep=(is_sell ? breaker_high>anchor.high : breaker_low<anchor.low);
+   const bool prior_sweep=(is_sell ? anchor.high>prior_high : anchor.low<prior_low);
+   const string marker_breaker=(breaker_sweep ? "[x]" : "[ ]");
+   const string marker_prior=(prior_sweep ? "[x]" : "[ ]");
+   const string breaker_name=(anchor_shift==3 ? "[2]+[1] combined" : "[1] breaker");
+   string checks=direction+" CHECKS\n"
+      +"[x] Anchor["+(string)anchor_shift+"] "+(is_sell ? "bullish" : "bearish")+"\n"
+      +"[x] "+breaker_name+" "+(is_sell ? "bearish" : "bullish")+"\n"
+      +"[x] Close across anchor open\n";
+   if(anchor_shift==3)
+      checks+="[x] [1] open on unbroken side\n";
+   checks+=marker_breaker+" Breaker takes anchor "+(is_sell ? "high" : "low")+"\n"
+      +marker_prior+" Anchor takes prior "+(string)Anchor_sweep_lookback+" HTF "+(is_sell ? "high" : "low")+"\n"
+      +"[x] "+breaker_name+" wick "+DoubleToString(100.0*breaker_wick/(breaker_body+breaker_wick),1)+"%\n"
+      +"[x] Anchor wick "+DoubleToString(100.0*anchor_wick/(anchor_body+anchor_wick),1)+"%";
+   const string checklist=name+"_Checks";
+   const double check_price=(is_sell ? MathMax(anchor.high,breaker_high) : MathMin(anchor.low,breaker_low));
+   if(!ObjectCreate(0,checklist,OBJ_TEXT,0,geometry.arrow_time+1,check_price)) success=false;
+   if(!ObjectSetString(0,checklist,OBJPROP_TEXT,checks)) success=false;
+   if(!ObjectSetInteger(0,checklist,OBJPROP_ANCHOR,is_sell ? ANCHOR_LEFT_UPPER : ANCHOR_LEFT_LOWER)) success=false;
+   if(!ObjectSetInteger(0,checklist,OBJPROP_COLOR,clrWhite)) success=false;
+   if(!ObjectSetInteger(0,checklist,OBJPROP_FONTSIZE,8)) success=false;
+   if(!ObjectSetInteger(0,checklist,OBJPROP_BACK,false)) success=false;
+   if(!ObjectSetInteger(0,checklist,OBJPROP_SELECTABLE,false)) success=false;
+   if(!ObjectSetString(0,checklist,OBJPROP_TOOLTIP,details)) success=false;
    if(!success)
       Print("Signal drawing failed: ",name," error ",GetLastError());
    ChartRedraw(0);
@@ -267,6 +303,50 @@ bool ReadClosedCandles(const SIGNAL_PERIOD timeframe,const datetime current_bar,
    return true;
 }
 
+bool ReadPriorExtremes(const datetime anchor_time,double &prior_high,double &prior_low)
+{
+   prior_high=1.0e100;
+   prior_low=-1.0e100;
+   if(SIGNAL_TIMEFRAME==TF_M90)
+   {
+      const int seconds=5400;
+      const datetime first=anchor_time-(datetime)(Anchor_sweep_lookback*seconds);
+      MqlRates minutes[];
+      const int copied=CopyRates(_Symbol,PERIOD_M1,first,anchor_time-1,minutes);
+      if(copied<=0 || minutes[0].time>first || !SeriesInfoInteger(_Symbol,PERIOD_M1,SERIES_SYNCHRONIZED))
+         return false;
+      double high=-1.0e100;
+      double low=1.0e100;
+      for(int i=1;i<=Anchor_sweep_lookback;i++)
+      {
+         const datetime start=anchor_time-(datetime)(i*seconds);
+         MqlRates prior;
+         if(!HasM90Components(minutes,start) || !AggregateMinutes(minutes,start,start+(datetime)seconds,prior))
+            return false;
+         high=MathMax(high,prior.high);
+         low=MathMin(low,prior.low);
+      }
+      prior_high=high;
+      prior_low=low;
+      return true;
+   }
+
+   const int shift=iBarShift(_Symbol,signal_timeframe,anchor_time,true);
+   if(shift<0)
+      return false;
+   MqlRates prior[];
+   if(CopyRates(_Symbol,signal_timeframe,shift+1,Anchor_sweep_lookback,prior)!=Anchor_sweep_lookback)
+      return false;
+   prior_high=-1.0e100;
+   prior_low=1.0e100;
+   for(int i=0;i<ArraySize(prior);i++)
+   {
+      prior_high=MathMax(prior_high,prior[i].high);
+      prior_low=MathMin(prior_low,prior[i].low);
+   }
+   return true;
+}
+
 void ProcessHigherTimeframe()
 {
    const datetime now=TimeCurrent();
@@ -299,8 +379,16 @@ void ProcessHigherTimeframe()
    }
    next_history_retry=0;
    last_bar=current_bar;
+   double source_prior_high=1.0e100;
+   double source_prior_low=-1.0e100;
+   double mid_prior_high=1.0e100;
+   double mid_prior_low=-1.0e100;
+   ReadPriorExtremes(source.time,source_prior_high,source_prior_low);
+   ReadPriorExtremes(mid.time,mid_prior_high,mid_prior_low);
    int anchor_shift=0;
-   const EntrySignal entry=DetectEntry(source,mid,signal,Body_to_wick_ratio,anchor_shift);
+   const EntrySignal entry=DetectEntry(source,mid,signal,Body_to_wick_ratio,
+                                       source_prior_high,source_prior_low,mid_prior_high,mid_prior_low,
+                                       anchor_shift);
    if(entry==ENTRY_NONE)
       return;
    if(entry==ENTRY_BUY) buy_signal_count++;
@@ -309,6 +397,8 @@ void ProcessHigherTimeframe()
    MqlRates anchor;
    if(anchor_shift==3) anchor=source;
    else anchor=mid;
+   const double anchor_prior_high=(anchor_shift==3 ? source_prior_high : mid_prior_high);
+   const double anchor_prior_low=(anchor_shift==3 ? source_prior_low : mid_prior_low);
    MqlRates breaker;
    breaker=signal;
 
@@ -323,7 +413,7 @@ void ProcessHigherTimeframe()
          " | mid[2] O/H/L/C=",mid.open,"/",mid.high,"/",mid.low,"/",mid.close,
          " | break[1] O/H/L/C=",breaker.open,"/",breaker.high,"/",breaker.low,"/",breaker.close,
          " | directional wick %=",DoubleToString(100.0*wick/(body+wick),4));
-   DrawSignal(entry,anchor,mid,breaker,current_bar,anchor_shift,1);
+   DrawSignal(entry,anchor,mid,breaker,current_bar,anchor_shift,1,anchor_prior_high,anchor_prior_low);
    AddInterestArea(entry,anchor,breaker,current_bar);
 }
 

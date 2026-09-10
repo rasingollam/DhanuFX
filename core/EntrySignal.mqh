@@ -5,7 +5,10 @@
 enum EntrySignal { ENTRY_NONE=0, ENTRY_BUY=1, ENTRY_SELL=-1 };
 
 EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRates &signal,
-                        const double max_wick_percent,int &anchor_shift)
+                        const double max_wick_percent,
+                        const double source_prior_high,const double source_prior_low,
+                        const double mid_prior_high,const double mid_prior_low,
+                        int &anchor_shift)
 {
    anchor_shift=0;
    if(max_wick_percent<0.0 || max_wick_percent>100.0)
@@ -21,7 +24,9 @@ EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRate
       {
          const double body=signal.open-signal.close;
          const double wick=signal.close-signal.low;
-         if(wick>=0.0 && signal.close<mid.open && signal.high>mid.high
+         const bool breaker_sweep=(signal.high>mid.high);
+         const bool anchor_sweep=(mid.high>mid_prior_high);
+         if(wick>=0.0 && signal.close<mid.open && (breaker_sweep || anchor_sweep)
             && 100.0*wick<max_wick_percent*(body+wick))
          {
             anchor_shift=2;
@@ -38,7 +43,9 @@ EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRate
       {
          const double body=signal.close-signal.open;
          const double wick=signal.high-signal.close;
-         if(wick>=0.0 && signal.close>mid.open && signal.low<mid.low
+         const bool breaker_sweep=(signal.low<mid.low);
+         const bool anchor_sweep=(mid.low<mid_prior_low);
+         if(wick>=0.0 && signal.close>mid.open && (breaker_sweep || anchor_sweep)
             && 100.0*wick<max_wick_percent*(body+wick))
          {
             anchor_shift=2;
@@ -58,7 +65,9 @@ EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRate
          const double body=mid.open-signal.close;
          const double wick=signal.close-MathMin(mid.low,signal.low);
          const double high=MathMax(mid.high,signal.high);
-         if(wick>=0.0 && signal.close<source.open && high>source.high
+         const bool breaker_sweep=(high>source.high);
+         const bool anchor_sweep=(source.high>source_prior_high);
+         if(wick>=0.0 && signal.close<source.open && (breaker_sweep || anchor_sweep)
             && 100.0*wick<max_wick_percent*(body+wick))
          {
             anchor_shift=3;
@@ -76,7 +85,9 @@ EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRate
          const double body=signal.close-mid.open;
          const double wick=MathMax(mid.high,signal.high)-signal.close;
          const double low=MathMin(mid.low,signal.low);
-         if(wick>=0.0 && signal.close>source.open && low<source.low
+         const bool breaker_sweep=(low<source.low);
+         const bool anchor_sweep=(source.low<source_prior_low);
+         if(wick>=0.0 && signal.close>source.open && (breaker_sweep || anchor_sweep)
             && 100.0*wick<max_wick_percent*(body+wick))
          {
             anchor_shift=3;
@@ -85,6 +96,14 @@ EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRate
       }
    }
    return ENTRY_NONE;
+}
+
+// Retained for standalone callers that do not provide historical sweep levels.
+EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRates &signal,
+                        const double max_wick_percent,int &anchor_shift)
+{
+   return DetectEntry(source,mid,signal,max_wick_percent,
+                      1.0e100,-1.0e100,1.0e100,-1.0e100,anchor_shift);
 }
 
 #endif
