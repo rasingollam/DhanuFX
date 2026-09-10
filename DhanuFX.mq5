@@ -1,15 +1,14 @@
 #property copyright "DhanuFX"
-#property version   "2.33"
+#property version   "3.00"
 #property strict
-#property description "HTF areas with matching LTF entries, money risk sizing, HTF wick SL, RR TP and validated entry filters."
+#property description "HTF signal candle drawing and area selection with a configurable directional wick threshold. Visualization only; no order submission."
 
 #include "core/EntrySignal.mqh"
 #include "core/SyntheticCandle.mqh"
 #include "core/SignalGeometry.mqh"
 #include "core/TradeRules.mqh"
-#include <Trade/Trade.mqh>
 
-enum SIGNAL_TIMEFRAME
+enum SIGNAL_PERIOD
 {
    TF_M1=PERIOD_M1,    // M1 (1 minute)
    TF_M2=PERIOD_M2,    // M2 (2 minutes)
@@ -23,7 +22,7 @@ enum SIGNAL_TIMEFRAME
    TF_M20=PERIOD_M20,  // M20 (20 minutes)
    TF_M30=PERIOD_M30,  // M30 (30 minutes)
    TF_H1=PERIOD_H1,    // H1 (1 hour)
-   TF_M90=90,         // M90 (90 minutes)
+   TF_M90=90,          // M90 (90 minutes)
    TF_H2=PERIOD_H2,    // H2 (2 hours)
    TF_H3=PERIOD_H3,    // H3 (3 hours)
    TF_H4=PERIOD_H4,    // H4 (4 hours)
@@ -35,41 +34,10 @@ enum SIGNAL_TIMEFRAME
    TF_MN1=PERIOD_MN1   // MN1 (1 month)
 };
 
-enum RISK_TYPE
-{
-   RISK_FIXED_MONEY=0,    // Fixed money (account currency)
-   RISK_EQUITY_PERCENT=1  // Percentage of current account equity
-};
-
-enum STOP_MODE
-{
-   SL_HTF_WICK=0,  // Structural invalidation: last two HTF candle wick extremes
-   SL_HTF_BODY=1,  // Zone body edge (tighter than the wick extreme)
-   SL_LTF_SWING=2  // Extreme of the last N closed LTF candles behind the entry
-};
-
-input SIGNAL_TIMEFRAME Timeframe=TF_M90; // Higher timeframe / area of interest
-input SIGNAL_TIMEFRAME Lower_Timeframe=TF_M5; // Lower timeframe / entry confirmation
+input SIGNAL_PERIOD SIGNAL_TIMEFRAME=TF_M90; // Higher timeframe / signal candle
 input double Body_to_wick_ratio=20.0; // Maximum directional wick percentage (strictly less)
-input RISK_TYPE Risk_Type=RISK_FIXED_MONEY; // Risk sizing method
-input double Risk_Money=100.0; // Risk per trade in account currency (before costs/slippage)
-input double Risk_Percent=1.0; // Equity percentage per trade (percentage mode only)
-input double Take_Profit_RR=2.0; // Reward / risk: 2.0 = 1:2
-input double Min_HTF_Source_Body_Percent=20.0; // Min HTF source body / full-range % (0 = off; verdict 20)
-input double Max_Entry_Distance_R=0.25; // Max entry chases R beyond zone (0 = off; verdict 0.25)
-input int Min_Zone_Age_Minutes=90; // Min zone age before entry, minutes (0 = off; verdict 90)
-input STOP_MODE Stop_Mode=SL_HTF_WICK; // Stop loss placement method
-input int Stop_Swing_Count=3; // LTF swing mode: extreme over the last N closed LTF candles (1..10)
-input bool Enable_Trading=true; // False = draw HTF areas only
-input ulong Magic_Number=26090901; // EA order identifier
-input ulong Deviation_Points=20; // Allowed execution deviation in symbol points
 
-CTrade trade;
 InterestArea areas[];
-datetime last_lower_bar=0;
-datetime lower_retry=0;
-int lower_seconds=0;
-
 datetime last_bar=0;
 ENUM_TIMEFRAMES signal_timeframe;
 int signal_seconds=0;
@@ -86,66 +54,15 @@ int OnInit()
       Print("Body_to_wick_ratio must be a percentage from 0 to 100.");
       return INIT_PARAMETERS_INCORRECT;
    }
-   if(!MathIsValidNumber(Min_HTF_Source_Body_Percent) || Min_HTF_Source_Body_Percent<0.0
-      || Min_HTF_Source_Body_Percent>100.0)
-   {
-      Print("Min_HTF_Source_Body_Percent must be a percentage from 0 to 100.");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   if(!MathIsValidNumber(Max_Entry_Distance_R) || Max_Entry_Distance_R<0.0)
-   {
-      Print("Max_Entry_Distance_R must be >= 0.");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   if(Min_Zone_Age_Minutes<0)
-   {
-      Print("Min_Zone_Age_Minutes must be >= 0.");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   if(Stop_Swing_Count<1 || Stop_Swing_Count>10)
-   {
-      Print("Stop_Swing_Count must be from 1 to 10.");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   if(Stop_Mode==SL_LTF_SWING && Lower_Timeframe==TF_M90)
-      Print("Stop mode LTF swing cannot build native M90 bars; entries fall back to the HTF wick stop.");
-   signal_timeframe=(Timeframe==TF_M90 ? PERIOD_M1 : (ENUM_TIMEFRAMES)Timeframe);
-   signal_seconds=(Timeframe==TF_M90 ? 5400 : PeriodSeconds(signal_timeframe));
+   signal_timeframe=(SIGNAL_TIMEFRAME==TF_M90 ? PERIOD_M1 : (ENUM_TIMEFRAMES)SIGNAL_TIMEFRAME);
+   signal_seconds=(SIGNAL_TIMEFRAME==TF_M90 ? 5400 : PeriodSeconds(signal_timeframe));
    if(signal_seconds<=0) return INIT_PARAMETERS_INCORRECT;
-   lower_seconds=(Lower_Timeframe==TF_M90 ? 5400 : PeriodSeconds((ENUM_TIMEFRAMES)Lower_Timeframe));
-   if(lower_seconds<=0 || lower_seconds>=signal_seconds
-      || !MathIsValidNumber(Take_Profit_RR) || Take_Profit_RR<=0)
-   {
-      Print("Lower timeframe must be below HTF. Take_Profit_RR must be positive.");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   if((Risk_Type!=RISK_FIXED_MONEY && Risk_Type!=RISK_EQUITY_PERCENT)
-      || (Risk_Type==RISK_FIXED_MONEY && (!MathIsValidNumber(Risk_Money) || Risk_Money<=0))
-      || (Risk_Type==RISK_EQUITY_PERCENT && (!MathIsValidNumber(Risk_Percent) || Risk_Percent<=0 || Risk_Percent>100)))
-   {
-      Print("Invalid risk input: fixed money must be positive; equity percent must be greater than 0 and at most 100.");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   const double volume_min=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
-   const double volume_max=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
-   const double volume_step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
-   if(volume_step<=0 || volume_min<=0 || volume_max<volume_min)
-   {
-      Print("Invalid symbol volume limits. Min=",volume_min," max=",volume_max," step=",volume_step);
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   trade.SetExpertMagicNumber(Magic_Number);
-   trade.SetDeviationInPoints(Deviation_Points);
-   trade.SetAsyncMode(false);
-   if(!trade.SetTypeFillingBySymbol(_Symbol)) return INIT_FAILED;
-   ArrayResize(areas,0);
-   last_lower_bar=0;
-   lower_retry=0;
-   signal_label=(Timeframe==TF_M90 ? "M90" : EnumToString(signal_timeframe));
+   signal_label=(SIGNAL_TIMEFRAME==TF_M90 ? "M90" : EnumToString(signal_timeframe));
    StringReplace(signal_label,"PERIOD_","");
    object_prefix="DhanuFX_"+_Symbol+"_"+signal_label+"_";
    // Remove stale zones from ALL earlier timeframes/versions on this chart.
    ObjectsDeleteAll(0,"DhanuFX_"+_Symbol+"_");
+   ArrayResize(areas,0);
    last_bar=0;
    next_history_retry=0;
    history_warning_bar=0;
@@ -157,15 +74,9 @@ int OnInit()
    ObjectSetInteger(0,legend,OBJPROP_COLOR,clrGold);
    ObjectSetInteger(0,legend,OBJPROP_FONTSIZE,10);
    ObjectSetString(0,legend,OBJPROP_TEXT,"DhanuFX | Signal: "+signal_label+" | Gold = [2] body | Blue = [1] body | Dashed = zone");
-Print("DhanuFX visualization ready: ",signal_label,
-          ", LTF=",EnumToString(Lower_Timeframe),", wick threshold ",DoubleToString(Body_to_wick_ratio,2),
-          "%, risk mode=",EnumToString(Risk_Type),", risk input=",
-          (Risk_Type==RISK_FIXED_MONEY ? Risk_Money : Risk_Percent),
-          (Risk_Type==RISK_FIXED_MONEY ? " "+AccountInfoString(ACCOUNT_CURRENCY) : "% equity"),
-          ", RR=",Take_Profit_RR,", filters: source body>=",DoubleToString(Min_HTF_Source_Body_Percent,2),
-          "%, entry distance<=",DoubleToString(Max_Entry_Distance_R,3),"R, zone age>=",Min_Zone_Age_Minutes,"m, stop mode=",EnumToString(Stop_Mode),
-          (Stop_Mode==SL_LTF_SWING ? " (swing "+(string)Stop_Swing_Count+")" : ""),", trading=",Enable_Trading);
-    return INIT_SUCCEEDED;
+   Print("DhanuFX visualization ready: ",signal_label,
+         ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%.");
+   return INIT_SUCCEEDED;
 }
 
 bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &previous,
@@ -175,7 +86,7 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &p
    const string name=object_prefix+direction+"_"+IntegerToString((long)older.time);
    SignalGeometry geometry;
    BuildSignalGeometry(older,previous,confirmation,signal_seconds,geometry);
-   if(Timeframe==TF_MN1)
+   if(SIGNAL_TIMEFRAME==TF_MN1)
    {
       MqlDateTime date;
       if(!TimeToStruct(confirmation,date)) return false;
@@ -261,7 +172,7 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &p
    return success;
 }
 
-bool ReadClosedCandles(const SIGNAL_TIMEFRAME timeframe,const datetime current_bar,
+bool ReadClosedCandles(const SIGNAL_PERIOD timeframe,const datetime current_bar,
                        MqlRates &older,MqlRates &previous)
 {
    if(timeframe==TF_M90)
@@ -294,34 +205,12 @@ bool ReadClosedCandles(const SIGNAL_TIMEFRAME timeframe,const datetime current_b
    return true;
 }
 
-// Swing stop from the last N closed native LTF candles behind the entry pattern.
-// Returns false when the lower timeframe is synthetic (M90) or history is missing,
-// so the caller can fall back to a structural stop.
-bool LtfSwingStop(const EntrySignal direction,const int count,double &result)
-{
-   if(Lower_Timeframe==TF_M90 || count<1 || count>10)
-      return false;
-   double extreme=0;
-   for(int shift=1; shift<=count; shift++)
-   {
-      const double value=(direction==ENTRY_BUY
-                          ? iLow(_Symbol,(ENUM_TIMEFRAMES)Lower_Timeframe,shift)
-                          : iHigh(_Symbol,(ENUM_TIMEFRAMES)Lower_Timeframe,shift));
-      if(value<=0)
-         return false;
-      extreme=(shift==1 ? value
-               : (direction==ENTRY_BUY ? MathMin(extreme,value) : MathMax(extreme,value)));
-   }
-   result=extreme;
-   return true;
-}
-
 void ProcessHigherTimeframe()
 {
    const datetime now=TimeCurrent();
-   const datetime current_bar=(Timeframe==TF_M90
-                              ? SyntheticBarStart(now,90)
-                              : iTime(_Symbol,signal_timeframe,0));
+   const datetime current_bar=(SIGNAL_TIMEFRAME==TF_M90
+                             ? SyntheticBarStart(now,90)
+                             : iTime(_Symbol,signal_timeframe,0));
    if(current_bar==0 || current_bar==last_bar)
       return;
 
@@ -334,7 +223,7 @@ void ProcessHigherTimeframe()
    if(now<next_history_retry)
       return;
    MqlRates older,previous;
-   if(!ReadClosedCandles(Timeframe,current_bar,older,previous))
+   if(!ReadClosedCandles(SIGNAL_TIMEFRAME,current_bar,older,previous))
    {
       // A failed history read is not a processed signal. Retry once per minute.
       next_history_retry=now-(now%60)+60;
@@ -372,7 +261,7 @@ void AddInterestArea(const EntrySignal signal,const MqlRates &older,
    area.confirmed=confirmation;
    area.available=TimeCurrent();
    area.expires=confirmation+(datetime)(5*signal_seconds);
-   if(Timeframe==TF_MN1)
+   if(SIGNAL_TIMEFRAME==TF_MN1)
    {
       MqlDateTime date;
       if(!TimeToStruct(confirmation,date)) return;
@@ -408,165 +297,12 @@ void MaintainAreas(const MqlTick &tick)
    ArrayResize(areas,keep);
 }
 
-bool SymbolHasExposure()
-{
-   // Avoid netting into, closing, or interfering with another symbol position.
-   for(int i=PositionsTotal()-1;i>=0;i--)
-      if(PositionGetSymbol(i)==_Symbol) return true;
-   for(int i=OrdersTotal()-1;i>=0;i--)
-      if(OrderGetTicket(i)>0 && OrderGetString(ORDER_SYMBOL)==_Symbol) return true;
-   return false;
-}
-
-bool CalculateRiskVolume(const EntrySignal signal,const MqlTick &quote,const double stop,
-                         double &volume,double &estimated_loss,double &risk_budget)
-{
-   // Snapshot equity once per candidate, including floating P/L on the account.
-   risk_budget=(Risk_Type==RISK_FIXED_MONEY ? Risk_Money
-                : PercentageRiskBudget(AccountInfoDouble(ACCOUNT_EQUITY),Risk_Percent));
-   if(!MathIsValidNumber(risk_budget) || risk_budget<=0)
-   {
-      Print("Entry skipped: risk budget is not positive (check account equity).");
-      return false;
-   }
-   const ENUM_ORDER_TYPE type=(signal==ENTRY_BUY ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
-   const double entry=(signal==ENTRY_BUY ? quote.ask : quote.bid);
-   const double minimum=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
-   double maximum=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
-   const double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
-   const double directional_limit=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_LIMIT);
-   if(directional_limit>0) maximum=MathMin(maximum,directional_limit);
-   double reference_profit=0;
-   // A broker-valid reference volume avoids assuming 1.0 lot is supported.
-   if(!OrderCalcProfit(type,_Symbol,minimum,entry,stop,reference_profit)
-      || !MathIsValidNumber(reference_profit) || reference_profit>=0)
-   {
-      Print("Entry skipped: cannot calculate stop loss in account currency. Error=",GetLastError());
-      return false;
-   }
-   volume=NormalizeDouble(RiskSizedVolume(risk_budget,-reference_profit/minimum,minimum,maximum,step),8);
-   if(volume<=0)
-   {
-      Print("Entry skipped: minimum lot exceeds risk budget ",risk_budget," ",AccountInfoString(ACCOUNT_CURRENCY));
-      return false;
-   }
-   double profit=0;
-   if(!OrderCalcProfit(type,_Symbol,volume,entry,stop,profit) || !MathIsValidNumber(profit) || profit>=0)
-      return false;
-   estimated_loss=-profit;
-   if(estimated_loss>risk_budget+1e-8)
-   {
-      Print("Entry skipped: calculated volume exceeds risk budget.");
-      return false;
-   }
-   return true;
-}
-
-void ProcessLowerTimeframe(const MqlTick &tick)
-{
-   const datetime bar=(Lower_Timeframe==TF_M90 ? SyntheticBarStart(tick.time,90)
-                       : iTime(_Symbol,(ENUM_TIMEFRAMES)Lower_Timeframe,0));
-   if(bar==0 || bar==last_lower_bar) return;
-   if(last_lower_bar==0) { last_lower_bar=bar; return; }
-   if(tick.time<lower_retry) return;
-   MqlRates older,previous;
-   if(!ReadClosedCandles(Lower_Timeframe,bar,older,previous))
-   {
-      lower_retry=tick.time+1;
-      return;
-   }
-   lower_retry=0;
-   last_lower_bar=bar; // Never submit more than once for this closed LTF pattern.
-   if(!Enable_Trading || SymbolHasExposure()) return;
-   const EntrySignal signal=DetectEntry(older,previous,Body_to_wick_ratio);
-   if(signal==ENTRY_NONE) return;
-   for(int i=ArraySize(areas)-1;i>=0;i--)
-   {
-      if(!AreaEntryMatches(areas[i],older,previous,tick.time,signal)) continue;
-      if(!MQLInfoInteger(MQL_TRADE_ALLOWED) || !TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)
-         || !AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) || !AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
-      {
-         Print("Entry skipped: automated trading is disabled.");
-         return;
-      }
-      double stop=0,target=0;
-      string stop_mode="wick";
-      double raw_stop=areas[i].stop;
-      if(Stop_Mode==SL_HTF_BODY)
-      {
-         raw_stop=(signal==ENTRY_BUY ? areas[i].bottom : areas[i].top);
-         stop_mode="body";
-      }
-      else if(Stop_Mode==SL_LTF_SWING)
-      {
-         double swing=0;
-         if(LtfSwingStop(signal,Stop_Swing_Count,swing))
-         {
-            raw_stop=swing;
-            stop_mode="ltf_swing";
-         }
-         else Print("Stop mode LTF swing unavailable on LTF=",EnumToString(Lower_Timeframe),
-                    "; using HTF wick stop for this entry.");
-      }
-      MqlTick entry_quote;
-      if(!SymbolInfoTick(_Symbol,entry_quote)) return;
-      if(entry_quote.time>=areas[i].expires
-         || AreaStopBreached(areas[i],entry_quote.bid,entry_quote.ask)) return;
-      const double tick_size=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
-      const double minimum=SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL)*_Point;
-      if(!CalculateTradePrices(signal,entry_quote.bid,entry_quote.ask,raw_stop,Take_Profit_RR,tick_size,minimum,stop,target))
-      {
-         Print("Entry skipped: ",stop_mode," SL/TP is invalid at this quote or violates broker minimum distance.");
-         return;
-      }
-      stop=NormalizeDouble(stop,_Digits);
-      target=NormalizeDouble(target,_Digits);
-      const double entry_price=(signal==ENTRY_BUY ? entry_quote.ask : entry_quote.bid);
-      const double stop_distance=MathAbs(entry_price-stop);
-      const double chase_r=EntryDistanceR(areas[i],entry_price,stop_distance);
-      if(!EntryFilterPass(areas[i],chase_r,Min_HTF_Source_Body_Percent,Max_Entry_Distance_R,
-                          (long)entry_quote.time,Min_Zone_Age_Minutes))
-      {
-         Print("Entry filter skipped | ",signal==ENTRY_BUY ? "BUY" : "SELL",
-               " | zone=",TimeToString(areas[i].confirmed),
-               " | source body %=",DoubleToString(areas[i].source_body_percent,2),
-               " | chase R=",DoubleToString(chase_r,3),
-               " | zone age min=",DoubleToString((long)(entry_quote.time-areas[i].confirmed)/60.0,1));
-         return;
-      }
-      double volume=0,estimated_loss=0,risk_budget=0;
-      if(!CalculateRiskVolume(signal,entry_quote,stop,volume,estimated_loss,risk_budget)) return;
-      const string comment="DhanuFX "+IntegerToString((long)areas[i].confirmed);
-      const bool submitted=(signal==ENTRY_BUY
-         ? trade.Buy(volume,_Symbol,0,stop,target,comment)
-         : trade.Sell(volume,_Symbol,0,stop,target,comment));
-      const uint code=trade.ResultRetcode();
-      // Accepted, partially filled, placed, or uncertain timeout: never duplicate.
-      if(code==TRADE_RETCODE_DONE || code==TRADE_RETCODE_DONE_PARTIAL
-         || code==TRADE_RETCODE_PLACED || code==TRADE_RETCODE_TIMEOUT)
-         areas[i].consumed=true;
-Print("LTF entry | ",EnumToString(Lower_Timeframe)," | ",signal==ENTRY_BUY ? "BUY" : "SELL",
-             " | zone=",TimeToString(areas[i].confirmed)," | stop mode=",stop_mode,
-             " | SL=",stop," TP=",target,
-            " | lots=",volume," | estimated risk=",estimated_loss," ",AccountInfoString(ACCOUNT_CURRENCY),
-            " | budget=",risk_budget," | risk mode=",EnumToString(Risk_Type),
-            " | entry spread=",DoubleToString(entry_quote.ask-entry_quote.bid,_Digits),
-            " | zone age min=",DoubleToString((long)(entry_quote.time-areas[i].confirmed)/60.0,1),
-            " | chase R=",DoubleToString(chase_r,4),
-            " | HTF body %=",DoubleToString(areas[i].source_body_percent,2),
-            " | submitted=",submitted," | retcode=",code," ",trade.ResultRetcodeDescription(),
-            " | deal=",trade.ResultDeal()," | fill=",trade.ResultPrice());
-      return;
-   }
-}
-
 void OnTick()
 {
    ProcessHigherTimeframe();
    MqlTick tick;
    if(!SymbolInfoTick(_Symbol,tick) || tick.bid<=0 || tick.ask<tick.bid) return;
    MaintainAreas(tick);
-   ProcessLowerTimeframe(tick);
 }
 
 // Keep rectangles after removal/test completion for inspection.
