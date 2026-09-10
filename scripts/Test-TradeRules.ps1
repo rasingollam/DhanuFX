@@ -54,11 +54,15 @@ $dirtyAnchor=$anchor; $dirtyAnchor.high=112
 Check ([TradeRuleTests]::DetectEntry($source,$dirtyAnchor,$breaker,20,[ref]$b0) -eq $none) 'Buy accepted with long anchor up wick (rule 7)'
 # Two-candle break: candle[3] (source) is the anchor; candles[2]+[1] complete the break (anchor_shift=3).
 $sSlowSource=Candle 10300 112 105 99 103
-$sSlowMid=Candle 10600 116 118 97 117
+$sSlowMid=Candle 10600 100 114 97 101
 $sSlowSignal=Candle 10900 100 114 98 113
 Check ([TradeRuleTests]::DetectEntry($sSlowSource,$sSlowMid,$sSlowSignal,20,[ref]$b0) -eq $buy -and $b0 -eq 3) 'Slow buy (two candles break candle[3]) rejected'
 $b0=0
 Check (-not ([TradeRuleTests]::DetectEntry($sSlowSource,$sSlowMid,$sSlowMid,20,[ref]$b0) -eq $buy)) 'Slow buy with mid run-up allowed'
+$dirtyMid=Candle 10600 110 120 90 100
+Check ([TradeRuleTests]::DetectEntry($sSlowSource,$dirtyMid,$sSlowSignal,20,[ref]$b0) -eq $none) 'Long combined candle[2]+[1] wick accepted'
+$gapBuy=$sSlowSignal; $gapBuy.open=114
+Check ([TradeRuleTests]::DetectEntry($sSlowSource,$sSlowMid,$gapBuy,20,[ref]$b0) -eq $none) 'Slow buy allowed candle[1] to open beyond anchor'
 $b0=0
 $sellAnchor=Candle 10600 100 110 99 108
 $sellBreaker=Candle 10900 112 118 99 99.5
@@ -67,9 +71,11 @@ $b0=0
 $dirtySell=$sellAnchor; $dirtySell.low=93
 Check ([TradeRuleTests]::DetectEntry($source,$dirtySell,$sellBreaker,20,[ref]$b0) -eq $none) 'Sell accepted with long anchor down wick (rule 7)'
 $sslSource=Candle 10300 100 112 99 108
-$sslMid=Candle 10600 116 120 115 117
+$sslMid=Candle 10600 116 120 116 117
 $sslSignal=Candle 10900 108 110 95 95.5
 Check ([TradeRuleTests]::DetectEntry($sslSource,$sslMid,$sslSignal,20,[ref]$b0) -eq $sell -and $b0 -eq 3) 'Slow sell (two candles break candle[3]) rejected'
+$gapSell=$sslSignal; $gapSell.open=95
+Check ([TradeRuleTests]::DetectEntry($sslSource,$sslMid,$gapSell,20,[ref]$b0) -eq $none) 'Slow sell allowed candle[1] to open beyond anchor'
 $b0=0
 Check ([TradeRuleTests]::AreaEntryMatches($area,$source,$anchor,10900,$buy)) 'Valid retest rejected'
 Check (-not [TradeRuleTests]::AreaEntryMatches($area,$source,$anchor,10900,$sell)) 'Opposite direction allowed'

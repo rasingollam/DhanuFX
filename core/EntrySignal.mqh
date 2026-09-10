@@ -47,18 +47,18 @@ EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRate
       }
    }
 
-   // Two-candle break: candle[3] (source) is the anchor; candle[2]+candle[1] break it.
+   // Two-candle break: candle[3] is the anchor; [2]+[1] are one synthetic breaker.
    if(source.close>source.open)
    {
       const double sbody=source.close-source.open;
       const double swing=source.open-source.low;
       if(swing>=0.0 && 100.0*swing<max_wick_percent*(sbody+swing)
-         && signal.close<signal.open)
+         && signal.open>=source.open && signal.close<mid.open)
       {
-         const double body=signal.open-signal.close;
-         const double wick=signal.close-signal.low;
-         const double spike=MathMax(signal.high,mid.high);
-         if(wick>=0.0 && signal.close<source.open && spike>source.high
+         const double body=mid.open-signal.close;
+         const double wick=signal.close-MathMin(mid.low,signal.low);
+         const double high=MathMax(mid.high,signal.high);
+         if(wick>=0.0 && signal.close<source.open && high>source.high
             && 100.0*wick<max_wick_percent*(body+wick))
          {
             anchor_shift=3;
@@ -71,12 +71,12 @@ EntrySignal DetectEntry(const MqlRates &source,const MqlRates &mid,const MqlRate
       const double sbody=source.open-source.close;
       const double swing=source.high-source.close;
       if(swing>=0.0 && 100.0*swing<max_wick_percent*(sbody+swing)
-         && signal.close>signal.open)
+         && signal.open<=source.open && signal.close>mid.open)
       {
-         const double body=signal.close-signal.open;
-         const double wick=signal.high-signal.close;
-         const double spike=MathMin(signal.low,mid.low);
-         if(wick>=0.0 && signal.close>source.open && spike<source.low
+         const double body=signal.close-mid.open;
+         const double wick=MathMax(mid.high,signal.high)-signal.close;
+         const double low=MathMin(mid.low,signal.low);
+         if(wick>=0.0 && signal.close>source.open && low<source.low
             && 100.0*wick<max_wick_percent*(body+wick))
          {
             anchor_shift=3;

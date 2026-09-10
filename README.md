@@ -14,12 +14,12 @@ Higher-timeframe signal candle drawing with area selection and a configurable di
 At a new candle, [1] is the candle that just closed, [2] its predecessor, [3] the candle before that. Two break variants are detected; the confirming candle is always [1]:
 
 - One-candle break (`anchor [2]`): the anchor is candle[2] and candle[1] breaks it in one candle.
-- Two-candle break (`anchor [3]`): the anchor is candle[3] and candles[2]+[1] break it together; [1] completes the break and either [2] or [1] takes out the anchor's extreme.
+- Two-candle break (`anchor [3]`): the anchor is candle[3] and candles[2]+[1] form one synthetic breaker: open = [2] open, close = [1] close, high/low = the combined extremes. Candle[1] must open on the unbroken side of the anchor open, then close across it. The synthetic candle's wick is used for the threshold.
 
 Sell:
-- Anchor bullish; [1] bearish; [1] close below anchor open; the window extreme (for [2]: [1] high, taken out by [1]; for [3]: max([2] high, [1] high)) above anchor high; [1] lower wick / (body + lower wick) * 100 strictly below the threshold; anchor lower wick / (body + lower wick) * 100 also strictly below the threshold.
+- Anchor bullish; breaker close below breaker open; breaker close below anchor open; breaker high above anchor high; breaker lower wick / (body + lower wick) * 100 strictly below the threshold; anchor lower wick / (body + lower wick) * 100 also strictly below the threshold. For anchor [2], the breaker is [1]; for anchor [3], it is the synthetic [2]+[1] candle.
 
-Buy (mirror): anchor bearish; [1] bullish; [1] close above anchor open; window extreme below anchor low; [1] upper wick and anchor upper wick each under the threshold.
+Buy (mirror): anchor bearish; breaker close above breaker open; breaker close above anchor open; breaker low below anchor low; breaker upper wick and anchor upper wick each under the threshold.
 
 - Body = absolute open/close difference. Equality and dojis do not qualify.
 
