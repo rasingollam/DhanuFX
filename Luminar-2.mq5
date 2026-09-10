@@ -75,19 +75,19 @@ int OnInit()
    ObjectSetInteger(0,legend,OBJPROP_YDISTANCE,24);
    ObjectSetInteger(0,legend,OBJPROP_COLOR,clrGold);
    ObjectSetInteger(0,legend,OBJPROP_FONTSIZE,10);
-   ObjectSetString(0,legend,OBJPROP_TEXT,"Luminar-2 | Signal: "+signal_label+" | Gold = [2] body | Blue = [1] body | Dashed = zone");
+   ObjectSetString(0,legend,OBJPROP_TEXT,"Luminar-2 | Signal: "+signal_label+" | Gold = [2]/[3] anchor body | Blue = [1] break body | Dashed = zone");
    Print("Luminar-2 visualization ready: ",signal_label,
          ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%.");
    return INIT_SUCCEEDED;
 }
 
-bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &previous,
-                const datetime confirmation)
+bool DrawSignal(const EntrySignal signal,const MqlRates &anchor,const MqlRates &breaker,
+                const datetime confirmation,const int anchor_shift,const int breaker_shift)
 {
    const string direction=(signal==ENTRY_SELL ? "SELL" : "BUY");
-   const string name=object_prefix+direction+"_"+IntegerToString((long)older.time);
+   const string name=object_prefix+direction+"_"+IntegerToString((long)anchor.time);
    SignalGeometry geometry;
-   BuildSignalGeometry(older,previous,confirmation,signal_seconds,geometry);
+   BuildSignalGeometry(anchor,breaker,confirmation,signal_seconds,geometry);
    if(SIGNAL_TIMEFRAME==TF_MN1)
    {
       MqlDateTime date;
@@ -95,21 +95,21 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &p
       date.mon+=5;
       if(date.mon>12) { date.mon-=12; date.year++; }
       geometry.right=StructToTime(date);
-      if(!TimeToStruct(older.time,date)) return false;
+      if(!TimeToStruct(anchor.time,date)) return false;
       date.mon++;
       if(date.mon>12) { date.mon=1; date.year++; }
       geometry.body_right=StructToTime(date);
-      if(!TimeToStruct(previous.time,date)) return false;
+      if(!TimeToStruct(breaker.time,date)) return false;
       date.mon++;
       if(date.mon>12) { date.mon=1; date.year++; }
       geometry.arrow_time=StructToTime(date)-1;
    }
    const string details=direction+" | "+signal_label
-      +" | candle[2] "+TimeToString(older.time)
-      +" O="+DoubleToString(older.open,_Digits)+" C="+DoubleToString(older.close,_Digits)
-      +" | signal candle "+TimeToString(previous.time)
-      +" open="+DoubleToString(previous.open,_Digits)
-      +" close="+DoubleToString(previous.close,_Digits)
+      +" | anchor["+(string)anchor_shift+"] "+TimeToString(anchor.time)
+      +" O="+DoubleToString(anchor.open,_Digits)+" C="+DoubleToString(anchor.close,_Digits)
+      +" | break candle ["+(string)breaker_shift+"] "+TimeToString(breaker.time)
+      +" open="+DoubleToString(breaker.open,_Digits)
+      +" close="+DoubleToString(breaker.close,_Digits)
       +" | confirmed "+TimeToString(confirmation);
    ResetLastError();
    if(!ObjectCreate(0,name,OBJ_RECTANGLE,0,geometry.body_right,geometry.top,geometry.right,geometry.bottom))
@@ -128,29 +128,29 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &p
    if(!ObjectSetString(0,name,OBJPROP_TOOLTIP,details)) success=false;
    // Separate, bright source body: exact selected-timeframe O/C and duration.
    // No filled projection obscures the underlying chart candles.
-   const string source=name+"_Body2";
-   if(!ObjectCreate(0,source,OBJ_RECTANGLE,0,geometry.left,geometry.top,geometry.body_right,geometry.bottom)) success=false;
-   if(!ObjectSetInteger(0,source,OBJPROP_COLOR,clrGold)) success=false;
-   if(!ObjectSetInteger(0,source,OBJPROP_FILL,false)) success=false;
-   if(!ObjectSetInteger(0,source,OBJPROP_WIDTH,2)) success=false;
-   if(!ObjectSetInteger(0,source,OBJPROP_BACK,false)) success=false;
-   if(!ObjectSetInteger(0,source,OBJPROP_SELECTABLE,false)) success=false;
-   if(!ObjectSetString(0,source,OBJPROP_TOOLTIP,"SOURCE BODY | "+details)) success=false;
+   const string sourceBox=name+"_Body2";
+   if(!ObjectCreate(0,sourceBox,OBJ_RECTANGLE,0,geometry.left,geometry.top,geometry.body_right,geometry.bottom)) success=false;
+   if(!ObjectSetInteger(0,sourceBox,OBJPROP_COLOR,clrGold)) success=false;
+   if(!ObjectSetInteger(0,sourceBox,OBJPROP_FILL,false)) success=false;
+   if(!ObjectSetInteger(0,sourceBox,OBJPROP_WIDTH,2)) success=false;
+   if(!ObjectSetInteger(0,sourceBox,OBJPROP_BACK,false)) success=false;
+   if(!ObjectSetInteger(0,sourceBox,OBJPROP_SELECTABLE,false)) success=false;
+   if(!ObjectSetString(0,sourceBox,OBJPROP_TOOLTIP,"SOURCE BODY | "+details)) success=false;
    const string label=name+"_BodyLabel";
    if(!ObjectCreate(0,label,OBJ_TEXT,0,geometry.left,geometry.top)) success=false;
-   if(!ObjectSetString(0,label,OBJPROP_TEXT,signal_label+" [2]")) success=false;
+   if(!ObjectSetString(0,label,OBJPROP_TEXT,signal_label+" ["+(string)anchor_shift+"]")) success=false;
    if(!ObjectSetInteger(0,label,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER)) success=false;
    if(!ObjectSetInteger(0,label,OBJPROP_COLOR,clrGold)) success=false;
    if(!ObjectSetInteger(0,label,OBJPROP_FONTSIZE,9)) success=false;
    if(!ObjectSetInteger(0,label,OBJPROP_BACK,false)) success=false;
    if(!ObjectSetInteger(0,label,OBJPROP_SELECTABLE,false)) success=false;
    if(!ObjectSetString(0,label,OBJPROP_TOOLTIP,"SOURCE BODY | "+details)) success=false;
-   // Signal candle body spans its own interval only, including custom M90.
-   const double signal_top=MathMax(previous.open,previous.close);
-   const double signal_bottom=MathMin(previous.open,previous.close);
+   // Break candle body spans its own interval only, including custom M90.
+   const double breaker_top=MathMax(breaker.open,breaker.close);
+   const double breaker_bottom=MathMin(breaker.open,breaker.close);
    const string body1=name+"_Body1";
-   if(!ObjectCreate(0,body1,OBJ_RECTANGLE,0,previous.time,signal_top,
-                    geometry.arrow_time+1,signal_bottom)) success=false;
+   if(!ObjectCreate(0,body1,OBJ_RECTANGLE,0,breaker.time,breaker_top,
+                    geometry.arrow_time+1,breaker_bottom)) success=false;
    if(!ObjectSetInteger(0,body1,OBJPROP_COLOR,clrDeepSkyBlue)) success=false;
    if(!ObjectSetInteger(0,body1,OBJPROP_FILL,false)) success=false;
    if(!ObjectSetInteger(0,body1,OBJPROP_STYLE,STYLE_SOLID)) success=false;
@@ -158,16 +158,16 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &p
    if(!ObjectSetInteger(0,body1,OBJPROP_BACK,false)) success=false;
    if(!ObjectSetInteger(0,body1,OBJPROP_SELECTABLE,false)) success=false;
    if(!ObjectSetInteger(0,body1,OBJPROP_HIDDEN,false)) success=false;
-   if(!ObjectSetString(0,body1,OBJPROP_TOOLTIP,"SIGNAL BODY [1] | "+details)) success=false;
+   if(!ObjectSetString(0,body1,OBJPROP_TOOLTIP,"BREAK BODY ["+(string)breaker_shift+"] | "+details)) success=false;
    const string label1=name+"_Body1Label";
-   if(!ObjectCreate(0,label1,OBJ_TEXT,0,previous.time,signal_top)) success=false;
-   if(!ObjectSetString(0,label1,OBJPROP_TEXT,signal_label+" [1]")) success=false;
+   if(!ObjectCreate(0,label1,OBJ_TEXT,0,breaker.time,breaker_top)) success=false;
+   if(!ObjectSetString(0,label1,OBJPROP_TEXT,signal_label+" ["+(string)breaker_shift+"]")) success=false;
    if(!ObjectSetInteger(0,label1,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER)) success=false;
    if(!ObjectSetInteger(0,label1,OBJPROP_COLOR,clrDeepSkyBlue)) success=false;
    if(!ObjectSetInteger(0,label1,OBJPROP_FONTSIZE,9)) success=false;
    if(!ObjectSetInteger(0,label1,OBJPROP_BACK,false)) success=false;
    if(!ObjectSetInteger(0,label1,OBJPROP_SELECTABLE,false)) success=false;
-   if(!ObjectSetString(0,label1,OBJPROP_TOOLTIP,"SIGNAL BODY [1] | "+details)) success=false;
+   if(!ObjectSetString(0,label1,OBJPROP_TOOLTIP,"BREAK BODY ["+(string)breaker_shift+"] | "+details)) success=false;
    if(!success)
       Print("Signal drawing failed: ",name," error ",GetLastError());
    ChartRedraw(0);
@@ -175,14 +175,14 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &older,const MqlRates &p
 }
 
 bool ReadClosedCandles(const SIGNAL_PERIOD timeframe,const datetime current_bar,
-                       MqlRates &older,MqlRates &previous)
+                       MqlRates &source,MqlRates &mid,MqlRates &signal)
 {
    if(timeframe==TF_M90)
    {
       const int seconds=5400;
-      const datetime start=current_bar-(datetime)(2*seconds);
+      const datetime start=current_bar-(datetime)(3*seconds);
       MqlRates minutes[];
-      // Fetch an earlier boundary too, to establish coverage before both candles.
+      // Fetch an earlier boundary too, to establish coverage before all candles.
       const int copied=CopyRates(_Symbol,PERIOD_M1,start-(datetime)seconds,(datetime)(current_bar-1),minutes);
       if(copied<=0 || !SeriesInfoInteger(_Symbol,PERIOD_M1,SERIES_SYNCHRONIZED))
          return false;
@@ -190,20 +190,23 @@ bool ReadClosedCandles(const SIGNAL_PERIOD timeframe,const datetime current_bar,
       // MT5 compresses missing chart bars. A partly traded M90 session interval
       // would otherwise draw as a narrowed "M90" body and change its OHLC.
       if(!HasM90Components(minutes,start)
+         || !HasM90Components(minutes,current_bar-(datetime)(2*seconds))
          || !HasM90Components(minutes,current_bar-(datetime)seconds))
          return false;
-      return AggregateMinutes(minutes,start,current_bar-(datetime)seconds,older)
-             && AggregateMinutes(minutes,current_bar-(datetime)seconds,current_bar,previous);
+      return AggregateMinutes(minutes,start,current_bar-(datetime)(2*seconds),source)
+             && AggregateMinutes(minutes,current_bar-(datetime)(2*seconds),current_bar-(datetime)seconds,mid)
+             && AggregateMinutes(minutes,current_bar-(datetime)seconds,current_bar,signal);
    }
 
-   // Static arrays receive oldest data first: [0]=candle[2], [1]=candle[1].
-   MqlRates candles[3];
-   if(CopyRates(_Symbol,(ENUM_TIMEFRAMES)timeframe,0,3,candles)!=3)
+   // Static arrays receive oldest data first: [0]=[3], [1]=[2], [2]=[1], [3]=forming.
+   MqlRates candles[4];
+   if(CopyRates(_Symbol,(ENUM_TIMEFRAMES)timeframe,0,4,candles)!=4)
       return false;
-   if(candles[2].time!=current_bar)
+   if(candles[3].time!=current_bar)
       return false;
-   older=candles[0];
-   previous=candles[1];
+   source=candles[0];
+   mid=candles[1];
+   signal=candles[2];
    return true;
 }
 
@@ -224,8 +227,8 @@ void ProcessHigherTimeframe()
    }
    if(now<next_history_retry)
       return;
-   MqlRates older,previous;
-   if(!ReadClosedCandles(SIGNAL_TIMEFRAME,current_bar,older,previous))
+   MqlRates source,mid,signal;
+   if(!ReadClosedCandles(SIGNAL_TIMEFRAME,current_bar,source,mid,signal))
    {
       // A failed history read is not a processed signal. Retry once per minute.
       next_history_retry=now-(now%60)+60;
@@ -239,24 +242,33 @@ void ProcessHigherTimeframe()
    }
    next_history_retry=0;
    last_bar=current_bar;
-   const EntrySignal signal=DetectEntry(older,previous,Body_to_wick_ratio);
-   if(signal==ENTRY_NONE)
+   int anchor_shift=0;
+   const EntrySignal entry=DetectEntry(source,mid,signal,Body_to_wick_ratio,anchor_shift);
+   if(entry==ENTRY_NONE)
       return;
+   MqlRates anchor;
+   if(anchor_shift==3) anchor=source;
+   else anchor=mid;
+   MqlRates breaker;
+   breaker=signal;
 
-   Print(signal==ENTRY_SELL ? "SELL" : "BUY"," signal | ",_Symbol," | ",
+   Print(entry==ENTRY_SELL ? "SELL" : "BUY"," signal | ",_Symbol," | ",
          signal_label," | confirmed ",TimeToString(current_bar),
-         " | candle[2] ",TimeToString(older.time));
-   const double body=MathAbs(previous.close-previous.open);
-   const double wick=(signal==ENTRY_SELL ? previous.close-previous.low : previous.high-previous.close);
-   Print("Signal evidence | candle[2] O/H/L/C=",older.open,"/",older.high,"/",older.low,"/",older.close,
-         " | candle[1] O/H/L/C=",previous.open,"/",previous.high,"/",previous.low,"/",previous.close,
+         " | anchor[",(string)anchor_shift,"] ",TimeToString(anchor.time),
+         " | break candle [1] ",TimeToString(breaker.time));
+   const double body=MathAbs(breaker.close-breaker.open);
+   const double wick=(entry==ENTRY_SELL ? breaker.close-breaker.low : breaker.high-breaker.close);
+   Print("Signal evidence | anchor[",(string)anchor_shift,"] O/H/L/C=",anchor.open,"/",anchor.high,"/",anchor.low,"/",anchor.close,
+         " | source[3] O/H/L/C=",source.open,"/",source.high,"/",source.low,"/",source.close,
+         " | mid[2] O/H/L/C=",mid.open,"/",mid.high,"/",mid.low,"/",mid.close,
+         " | break[1] O/H/L/C=",breaker.open,"/",breaker.high,"/",breaker.low,"/",breaker.close,
          " | directional wick %=",DoubleToString(100.0*wick/(body+wick),4));
-   DrawSignal(signal,older,previous,current_bar);
-   AddInterestArea(signal,older,previous,current_bar);
+   DrawSignal(entry,anchor,breaker,current_bar,anchor_shift,1);
+   AddInterestArea(entry,anchor,breaker,current_bar);
 }
 
-void AddInterestArea(const EntrySignal signal,const MqlRates &older,
-                     const MqlRates &previous,const datetime confirmation)
+void AddInterestArea(const EntrySignal signal,const MqlRates &source,
+                     const MqlRates &breaker,const datetime confirmation)
 {
    InterestArea area;
    area.direction=signal;
@@ -271,10 +283,10 @@ void AddInterestArea(const EntrySignal signal,const MqlRates &older,
       if(date.mon>12) { date.mon-=12; date.year++; }
       area.expires=StructToTime(date);
    }
-   area.top=MathMax(older.open,older.close);
-   area.bottom=MathMin(older.open,older.close);
-   area.stop=(signal==ENTRY_BUY ? MathMin(older.low,previous.low) : MathMax(older.high,previous.high));
-   area.source_body_percent=ComputeSourceBodyPercent(older);
+   area.top=MathMax(source.open,source.close);
+   area.bottom=MathMin(source.open,source.close);
+   area.stop=(signal==ENTRY_BUY ? MathMin(source.low,breaker.low) : MathMax(source.high,breaker.high));
+   area.source_body_percent=ComputeSourceBodyPercent(source);
    area.consumed=false;
    const int count=ArraySize(areas);
    if(ArrayResize(areas,count+1)!=count+1) { Print("Cannot allocate interest area"); return; }

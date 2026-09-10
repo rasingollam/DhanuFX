@@ -13,11 +13,12 @@ $source=$source -replace 'const (MqlRates|InterestArea) &','$1 '
 $source=$source -replace 'const (double|datetime|EntrySignal) ','$1 '
 $source=$source -replace 'const (long|int|ulong|uint) ','$1 '
 $source=$source -replace 'datetime','long'
-$source=$source -replace 'MathFloor\(','System.Math.Floor(' -replace 'MathCeil\(','System.Math.Ceiling(' -replace 'MathAbs\(','System.Math.Abs('
+$source=$source -replace 'MathFloor\(','System.Math.Floor(' -replace 'MathCeil\(','System.Math.Ceiling(' -replace 'MathAbs\(','System.Math.Abs(' -replace 'MathMax\(','System.Math.Max(' -replace 'MathMin\(','System.Math.Min('
 $source=$source -replace '(EntrySignal|double|bool) (DetectEntry|AreaEntryMatches|AreaStopBreached|CalculateTradePrices|ComputeSourceBodyPercent|EntryDistanceR|EntryFilterPass)\(','public static $1 $2('
 $source=$source -replace 'double RiskSizedVolume\(','public static double RiskSizedVolume('
 $source=$source -replace 'double PercentageRiskBudget\(','public static double PercentageRiskBudget('
 $source=$source -replace 'double &(stop|target)','ref double $1'
+$source=$source -replace 'int &anchor_shift','ref int anchor_shift'
 $source=$source -replace '(?m)^   (EntrySignal|long|double|bool) (\w+);','   public $1 $2;'
 $adapter=@'
 public class TradeRuleTests {
@@ -43,32 +44,44 @@ $none=[TradeRuleTests+EntrySignal]::ENTRY_NONE
 $area=New-Object 'TradeRuleTests+InterestArea'
 $area.direction=$buy; $area.confirmed=10000; $area.available=10001
 $area.expires=37000; $area.top=110; $area.bottom=100; $area.stop=90; $area.consumed=$false
-$older=Candle 10300 110 103 99 101
-$previous=Candle 10600 100 114 98 113
-Check ([TradeRuleTests]::DetectEntry($older,$previous,20) -eq $buy) 'LTF buy fixture invalid'
-# 7th condition: the source candle[2] must be a clean body too
-# (SELL: lower wick under ratio, BUY: upper wick under ratio).
-$sOlder=Candle 10300 100 110 99 108
-$sPrevious=Candle 10600 112 118 99 99.5
-Check ([TradeRuleTests]::DetectEntry($sOlder,$sPrevious,20) -eq $sell) 'Sell source-close signal rejected'
-$sDirty=$sOlder; $sDirty.low=93
-Check ([TradeRuleTests]::DetectEntry($sDirty,$sPrevious,20) -eq $none) 'Sell accepted with long source down wick'
-$bClean=Candle 10300 112 105 99 103
-$bPrevious=Candle 10600 100 114 98 113
-Check ([TradeRuleTests]::DetectEntry($bClean,$bPrevious,20) -eq $buy) 'Clean buy source rejected'
-$bDirty=$bClean; $bDirty.high=112
-Check ([TradeRuleTests]::DetectEntry($bDirty,$bPrevious,20) -eq $none) 'Buy accepted with long source up wick'
-Check ([TradeRuleTests]::AreaEntryMatches($area,$older,$previous,10900,$buy)) 'Valid retest rejected'
-Check (-not [TradeRuleTests]::AreaEntryMatches($area,$older,$previous,10900,$sell)) 'Opposite direction allowed'
-Check (-not [TradeRuleTests]::AreaEntryMatches($area,$older,$previous,10900,$none)) 'Missing pattern allowed'
-Check (-not [TradeRuleTests]::AreaEntryMatches($area,$older,$previous,37000,$buy)) 'Expiry boundary allowed'
-Check (-not [TradeRuleTests]::AreaEntryMatches($area,$older,$previous,38000,$buy)) 'Expired area allowed'
+$b0=0
+$source=Candle 10300 100 112 95 108
+$anchor=Candle 10600 110 103 99 101
+$breaker=Candle 10900 100 114 98 113
+Check ([TradeRuleTests]::DetectEntry($source,$anchor,$breaker,20,[ref]$b0) -eq $buy -and $b0 -eq 2) 'Fast buy (candle[1] breaks candle[2]) rejected'
+$b0=0
+$dirtyAnchor=$anchor; $dirtyAnchor.high=112
+Check ([TradeRuleTests]::DetectEntry($source,$dirtyAnchor,$breaker,20,[ref]$b0) -eq $none) 'Buy accepted with long anchor up wick (rule 7)'
+# Two-candle break: candle[3] (source) is the anchor; candles[2]+[1] complete the break (anchor_shift=3).
+$sSlowSource=Candle 10300 112 105 99 103
+$sSlowMid=Candle 10600 116 118 97 117
+$sSlowSignal=Candle 10900 100 114 98 113
+Check ([TradeRuleTests]::DetectEntry($sSlowSource,$sSlowMid,$sSlowSignal,20,[ref]$b0) -eq $buy -and $b0 -eq 3) 'Slow buy (two candles break candle[3]) rejected'
+$b0=0
+Check (-not ([TradeRuleTests]::DetectEntry($sSlowSource,$sSlowMid,$sSlowMid,20,[ref]$b0) -eq $buy)) 'Slow buy with mid run-up allowed'
+$b0=0
+$sellAnchor=Candle 10600 100 110 99 108
+$sellBreaker=Candle 10900 112 118 99 99.5
+Check ([TradeRuleTests]::DetectEntry($source,$sellAnchor,$sellBreaker,20,[ref]$b0) -eq $sell -and $b0 -eq 2) 'Fast sell (candle[1] breaks candle[2]) rejected'
+$b0=0
+$dirtySell=$sellAnchor; $dirtySell.low=93
+Check ([TradeRuleTests]::DetectEntry($source,$dirtySell,$sellBreaker,20,[ref]$b0) -eq $none) 'Sell accepted with long anchor down wick (rule 7)'
+$sslSource=Candle 10300 100 112 99 108
+$sslMid=Candle 10600 116 120 115 117
+$sslSignal=Candle 10900 108 110 95 95.5
+Check ([TradeRuleTests]::DetectEntry($sslSource,$sslMid,$sslSignal,20,[ref]$b0) -eq $sell -and $b0 -eq 3) 'Slow sell (two candles break candle[3]) rejected'
+$b0=0
+Check ([TradeRuleTests]::AreaEntryMatches($area,$source,$anchor,10900,$buy)) 'Valid retest rejected'
+Check (-not [TradeRuleTests]::AreaEntryMatches($area,$source,$anchor,10900,$sell)) 'Opposite direction allowed'
+Check (-not [TradeRuleTests]::AreaEntryMatches($area,$source,$anchor,10900,$none)) 'Missing pattern allowed'
+Check (-not [TradeRuleTests]::AreaEntryMatches($area,$source,$anchor,37000,$buy)) 'Expiry boundary allowed'
+Check (-not [TradeRuleTests]::AreaEntryMatches($area,$source,$anchor,38000,$buy)) 'Expired area allowed'
 $changed=$area; $changed.consumed=$true
-Check (-not [TradeRuleTests]::AreaEntryMatches($changed,$older,$previous,10900,$buy)) 'Used area allowed a second entry'
+Check (-not [TradeRuleTests]::AreaEntryMatches($changed,$source,$anchor,10900,$buy)) 'Used area allowed a second entry'
 $changed=$area; $changed.available=10700
-Check (-not [TradeRuleTests]::AreaEntryMatches($changed,$older,$previous,10900,$buy)) 'Pattern predating area availability allowed'
-$early=$older; $early.time=9700
-Check (-not [TradeRuleTests]::AreaEntryMatches($area,$early,$previous,10900,$buy)) 'Pattern before HTF confirmation allowed'
+Check (-not [TradeRuleTests]::AreaEntryMatches($changed,$source,$anchor,10900,$buy)) 'Pattern predating area availability allowed'
+$early=$source; $early.time=9700
+Check (-not [TradeRuleTests]::AreaEntryMatches($area,$early,$anchor,10900,$buy)) 'Pattern before HTF confirmation allowed'
 $farOlder=Candle 10300 140 145 130 135
 $farPrevious=Candle 10600 135 150 129 149
 Check (-not [TradeRuleTests]::AreaEntryMatches($area,$farOlder,$farPrevious,10900,$buy)) 'Pattern away from zone allowed'

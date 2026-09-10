@@ -11,19 +11,25 @@ Higher-timeframe signal candle drawing with area selection and a configurable di
 
 ## Pattern rules
 
-At a new candle, [1] is the candle that just closed and [2] is its predecessor.
+At a new candle, [1] is the candle that just closed, [2] its predecessor, [3] the candle before that. Two break variants are detected; the confirming candle is always [1]:
 
-- Sell: [2] bullish, [1] bearish, [1] close below [2] open, [1] high above [2] high, [1] lower wick / (body + lower wick) * 100 strictly below the threshold, and [2] lower wick / (body + lower wick) * 100 also strictly below the threshold.
-- Buy: [2] bearish, [1] bullish, [1] close above [2] open, [1] low below [2] low, [1] upper wick / (body + upper wick) * 100 strictly below the threshold, and [2] upper wick / (body + upper wick) * 100 also strictly below the threshold.
+- One-candle break (`anchor [2]`): the anchor is candle[2] and candle[1] breaks it in one candle.
+- Two-candle break (`anchor [3]`): the anchor is candle[3] and candles[2]+[1] break it together; [1] completes the break and either [2] or [1] takes out the anchor's extreme.
+
+Sell:
+- Anchor bullish; [1] bearish; [1] close below anchor open; the window extreme (for [2]: [1] high, taken out by [1]; for [3]: max([2] high, [1] high)) above anchor high; [1] lower wick / (body + lower wick) * 100 strictly below the threshold; anchor lower wick / (body + lower wick) * 100 also strictly below the threshold.
+
+Buy (mirror): anchor bearish; [1] bullish; [1] close above anchor open; window extreme below anchor low; [1] upper wick and anchor upper wick each under the threshold.
+
 - Body = absolute open/close difference. Equality and dojis do not qualify.
 
 ## Visualization
 
-Gold boxes show the selected HTF candle[2] body, blue boxes show candle[1], and dashed green/red boxes project the buy/sell area of interest. Labels identify the HTF. On each new signal the EA draws the two candle bodies and projects the zone; stale drawings from earlier timeframes/versions are removed on init.
+Gold boxes show the selected HTF anchor body ([2] or [3], depending on the variant), blue boxes show the break candle[1], and dashed green/red boxes project the buy/sell area of interest. Labels identify the HTF and the anchor index. On each new signal the EA draws the two candle bodies and projects the zone; stale drawings from earlier timeframes/versions are removed on init.
 
 ## Area selection
 
-1. A confirmed HTF pattern creates a zone bounded by HTF candle[2]'s open and close.
+1. A confirmed HTF pattern creates a zone bounded by the anchor's open and close.
 2. The zone is active from confirmation until five HTF periods after confirmation (five calendar months for MN1). The chart's dashed projection ends at this same expiry.
 3. When several areas qualify, the newest takes priority (kept in memory, ordered oldest-first; stale ones are pruned).
 4. A buy zone is invalidated if Bid reaches its HTF wick SL; a sell zone is invalidated if Ask reaches its HTF wick SL. Invalidated and expired zones are pruned and no longer drawn.
