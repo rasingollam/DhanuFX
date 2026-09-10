@@ -45,6 +45,17 @@ string signal_label;
 datetime next_history_retry=0;
 datetime history_warning_bar=0;
 string object_prefix;
+int buy_signal_count=0;
+int sell_signal_count=0;
+
+void UpdateSignalCounter()
+{
+   const string counter=object_prefix+"Counter";
+   ObjectSetString(0,counter,OBJPROP_TEXT,
+                   "Signals | BUY: "+(string)buy_signal_count
+                   +" | SELL: "+(string)sell_signal_count
+                   +" | TOTAL: "+(string)(buy_signal_count+sell_signal_count));
+}
 
 int OnInit()
 {
@@ -68,6 +79,8 @@ int OnInit()
    last_bar=0;
    next_history_retry=0;
    history_warning_bar=0;
+   buy_signal_count=0;
+   sell_signal_count=0;
    const string legend=object_prefix+"Legend";
    ObjectCreate(0,legend,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,legend,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -76,6 +89,14 @@ int OnInit()
    ObjectSetInteger(0,legend,OBJPROP_COLOR,clrGold);
    ObjectSetInteger(0,legend,OBJPROP_FONTSIZE,10);
    ObjectSetString(0,legend,OBJPROP_TEXT,"Luminar-2 | Signal: "+signal_label+" | Gold = [2]/[3] anchor body | Blue = [1] break body | Dashed = zone");
+   const string counter=object_prefix+"Counter";
+   ObjectCreate(0,counter,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,counter,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,counter,OBJPROP_XDISTANCE,12);
+   ObjectSetInteger(0,counter,OBJPROP_YDISTANCE,42);
+   ObjectSetInteger(0,counter,OBJPROP_COLOR,clrWhite);
+   ObjectSetInteger(0,counter,OBJPROP_FONTSIZE,10);
+   UpdateSignalCounter();
    Print("Luminar-2 visualization ready: ",signal_label,
          ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%.");
    return INIT_SUCCEEDED;
@@ -282,6 +303,9 @@ void ProcessHigherTimeframe()
    const EntrySignal entry=DetectEntry(source,mid,signal,Body_to_wick_ratio,anchor_shift);
    if(entry==ENTRY_NONE)
       return;
+   if(entry==ENTRY_BUY) buy_signal_count++;
+   else sell_signal_count++;
+   UpdateSignalCounter();
    MqlRates anchor;
    if(anchor_shift==3) anchor=source;
    else anchor=mid;
