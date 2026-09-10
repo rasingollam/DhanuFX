@@ -2,7 +2,7 @@
 
 ## Filter experiment results (EA v2.30, four separate backtests)
 
-Running source: `C:\Users\User\AppData\Roaming\MetaQuotes\Tester\12FE2A177E39CFD95D50E79D01391499\Agent-127.0.0.1-3000\logs\20260909.log` (runs at lines 4184, 18427, 32387, 46370). All four runs: XAUUSD, M90 areas, M5 entries, wick threshold 20%, fixed USD 100 risk, RR 2, USD 10,000 deposit, 2014-01-14 to 2026-09-08. Only the named filter is on per run; default 0 means off. Reproduce with `python docs/analyze_tester_logs.py` (set `DHANU_TESTER_LOG` to the Agent-3000 path).
+Running source: `C:\Users\User\AppData\Roaming\MetaQuotes\Tester\12FE2A177E39CFD95D50E79D01391499\Agent-127.0.0.1-3000\logs\20260909.log` (runs at lines 4184, 18427, 32387, 46370). All four runs: XAUUSD, M90 areas, M5 entries, wick threshold 20%, fixed USD 100 risk, RR 2, USD 10,000 deposit, 2014-01-14 to 2026-09-08. Only the named filter is on per run; default 0 means off. Reproduce with `python scripts/analyze_tester_logs.py` (set `DHANU_TESTER_LOG` to the Agent-3000 path).
 
 | Config | Trades | Wins | Win % | Gross rec. | Final balance | Net | PF (gross rec.) | DD est. | Loss streak | Filtered-out |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|

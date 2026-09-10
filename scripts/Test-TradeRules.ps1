@@ -1,8 +1,11 @@
 $ErrorActionPreference='Stop'
-$testRoot=$PSScriptRoot
-if (-not $testRoot) { $testRoot=(Get-Location).Path }
+$probe=$PSScriptRoot
+if (-not $probe) { $probe=(Get-Location).Path }
+$projectRoot=$probe
+while ($projectRoot -and -not (Test-Path -LiteralPath (Join-Path $projectRoot 'core'))) { $projectRoot=Split-Path $projectRoot -Parent }
+$coreRoot=Join-Path $projectRoot 'core'
 # Execute the shared MQL decision/calculation bodies through .NET; adapt syntax only.
-$source=(Get-Content (Join-Path $testRoot 'EntrySignal.mqh') -Raw)+"`n"+(Get-Content (Join-Path $testRoot 'TradeRules.mqh') -Raw)
+$source=(Get-Content (Join-Path $coreRoot 'EntrySignal.mqh') -Raw)+"`n"+(Get-Content (Join-Path $coreRoot 'TradeRules.mqh') -Raw)
 $source=$source -replace '(?m)^#.*$',''
 $source=$source -replace 'enum EntrySignal','public enum EntrySignal'
 $source=$source -replace 'struct InterestArea','public struct InterestArea'

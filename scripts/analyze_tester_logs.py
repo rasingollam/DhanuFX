@@ -3,7 +3,7 @@ import os, re, json, statistics
 from pathlib import Path
 from datetime import datetime
 
-root=Path(__file__).resolve().parent
+root=Path(__file__).resolve().parent.parent
 default=Path(os.environ['APPDATA'])/'MetaQuotes/Tester/12FE2A177E39CFD95D50E79D01391499/Agent-127.0.0.1-3001/logs/20260909.log'
 path=Path(os.environ.get('DHANU_TESTER_LOG',default))
 lines=path.read_text(encoding='utf-16').splitlines()
@@ -116,5 +116,5 @@ for label,key in [('direction',lambda t:t['direction']),('year',lambda t:t['time
     for t in trades: buckets.setdefault(key(t),[]).append(t)
     groups[label]={k:stats(v) for k,v in sorted(buckets.items())}
 output={'source':str(path),'note':'Gross P/L inferred using 100 oz/lot; excludes costs and intratrade equity drawdown. Filters are retrospective subsets, not rerun backtests.','runs':runs,'latest_groups':groups,'experiment_table':experiment_table}
-(root/'tester_analysis.json').write_text(json.dumps(output,indent=2),encoding='utf-8')
+(root/'docs/tester_analysis.json').write_text(json.dumps(output,indent=2),encoding='utf-8')
 print(json.dumps({'runs':[{'start_line':r['start_line'],'filters':r['filters'],'rr':r['inputs'].get('Take_Profit_RR'),'final_balance':r.get('final_balance'),'skips':r.get('filter_skips',0),'unmatched':r['unmatched'],'stats':r['stats']} for r in runs],'experiment_table':experiment_table,'latest_groups':groups},indent=2))

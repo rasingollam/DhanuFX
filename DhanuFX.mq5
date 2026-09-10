@@ -1,12 +1,12 @@
 #property copyright "DhanuFX"
-#property version   "2.32"
+#property version   "2.33"
 #property strict
 #property description "HTF areas with matching LTF entries, money risk sizing, HTF wick SL, RR TP and validated entry filters."
 
-#include "EntrySignal.mqh"
-#include "SyntheticCandle.mqh"
-#include "SignalGeometry.mqh"
-#include "TradeRules.mqh"
+#include "core/EntrySignal.mqh"
+#include "core/SyntheticCandle.mqh"
+#include "core/SignalGeometry.mqh"
+#include "core/TradeRules.mqh"
 #include <Trade/Trade.mqh>
 
 enum SIGNAL_TIMEFRAME
