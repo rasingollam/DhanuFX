@@ -48,14 +48,223 @@ datetime history_warning_bar=0;
 string object_prefix;
 int buy_signal_count=0;
 int sell_signal_count=0;
+const int dashboard_line_count=24;
 
 void UpdateSignalCounter()
 {
    const string counter=object_prefix+"Counter";
    ObjectSetString(0,counter,OBJPROP_TEXT,
-                   "Signals | BUY: "+(string)buy_signal_count
-                   +" | SELL: "+(string)sell_signal_count
-                   +" | TOTAL: "+(string)(buy_signal_count+sell_signal_count));
+                    "SIGNALS     BUY  "+(string)buy_signal_count
+                    +"     SELL  "+(string)sell_signal_count
+                    +"     TOTAL  "+(string)(buy_signal_count+sell_signal_count));
+}
+
+string CheckBox(const bool passed)
+{
+   return (passed ? "[x]" : "[ ]");
+}
+
+bool WickPass(const double body,const double wick)
+{
+   return wick>=0.0 && body+wick>0.0
+          && 100.0*wick<Body_to_wick_ratio*(body+wick);
+}
+
+double WickPercent(const double body,const double wick)
+{
+   return (body+wick>0.0 ? 100.0*wick/(body+wick) : 0.0);
+}
+
+string BuildFastChecks(const MqlRates &mid,const MqlRates &signal,
+                       const double prior_high,const double prior_low)
+{
+   if(mid.close==mid.open)
+      return "[2] -> [1]  WAITING\n[ ] Anchor [2] is a doji";
+   const bool sell=(mid.close>mid.open);
+   const string side=(sell ? "high" : "low");
+   const bool breaker_direction=(sell ? signal.close<signal.open : signal.close>signal.open);
+   const bool close_break=(sell ? signal.close<mid.open : signal.close>mid.open);
+   const bool breaker_sweep=(sell ? signal.high>mid.high : signal.low<mid.low);
+   const bool anchor_sweep=(sell ? mid.high>prior_high : mid.low<prior_low);
+   const double breaker_body=MathAbs(signal.close-signal.open);
+   const double breaker_wick=(sell ? signal.close-signal.low : signal.high-signal.close);
+   const double anchor_body=MathAbs(mid.close-mid.open);
+   const double anchor_wick=(sell ? mid.open-mid.low : mid.high-mid.close);
+   const bool breaker_wick_pass=WickPass(breaker_body,breaker_wick);
+   const bool anchor_wick_pass=WickPass(anchor_body,anchor_wick);
+   const bool ready=breaker_direction && close_break && (breaker_sweep || anchor_sweep)
+                    && breaker_wick_pass && anchor_wick_pass;
+   return "[2] -> [1]  "+(sell ? "SELL" : "BUY")+"\n"
+      +"[x] Anchor [2] "+(sell ? "bullish" : "bearish")+"\n"
+      +CheckBox(breaker_direction)+" Breaker [1] "+(sell ? "bearish" : "bullish")+"\n"
+      +CheckBox(close_break)+" [1] close crosses [2] open\n"
+      +CheckBox(breaker_sweep)+" [1] takes [2] "+side+"\n"
+      +CheckBox(anchor_sweep)+" [2] takes prior "+(string)Anchor_sweep_lookback+" HTF "+side+"\n"
+      +CheckBox(breaker_wick_pass)+" [1] wick "+DoubleToString(WickPercent(breaker_body,breaker_wick),1)+"%\n"
+      +CheckBox(anchor_wick_pass)+" [2] wick "+DoubleToString(WickPercent(anchor_body,anchor_wick),1)+"%\n"
+      +CheckBox(ready)+" RESULT";
+}
+
+string BuildSlowChecks(const MqlRates &source,const MqlRates &mid,const MqlRates &signal,
+                       const double prior_high,const double prior_low)
+{
+   if(source.close==source.open)
+      return "[3] -> [2]+[1]  WAITING\n[ ] Anchor [3] is a doji";
+   const bool sell=(source.close>source.open);
+   const string side=(sell ? "high" : "low");
+   const double breaker_open=mid.open;
+   const double breaker_close=signal.close;
+   const double breaker_high=MathMax(mid.high,signal.high);
+   const double breaker_low=MathMin(mid.low,signal.low);
+   const bool breaker_direction=(sell ? breaker_close<breaker_open : breaker_close>breaker_open);
+   const bool open_side=(sell ? signal.open>=source.open : signal.open<=source.open);
+   const bool close_break=(sell ? signal.close<source.open : signal.close>source.open);
+   const bool breaker_sweep=(sell ? breaker_high>source.high : breaker_low<source.low);
+   const bool anchor_sweep=(sell ? source.high>prior_high : source.low<prior_low);
+   const double breaker_body=MathAbs(breaker_close-breaker_open);
+   const double breaker_wick=(sell ? breaker_close-breaker_low : breaker_high-breaker_close);
+   const double anchor_body=MathAbs(source.close-source.open);
+   const double anchor_wick=(sell ? source.open-source.low : source.high-source.close);
+   const bool breaker_wick_pass=WickPass(breaker_body,breaker_wick);
+   const bool anchor_wick_pass=WickPass(anchor_body,anchor_wick);
+   const bool ready=breaker_direction && open_side && close_break && (breaker_sweep || anchor_sweep)
+                    && breaker_wick_pass && anchor_wick_pass;
+   return "[3] -> [2]+[1]  "+(sell ? "SELL" : "BUY")+"\n"
+      +"[x] Anchor [3] "+(sell ? "bullish" : "bearish")+"\n"
+      +CheckBox(breaker_direction)+" Combined [2]+[1] "+(sell ? "bearish" : "bullish")+"\n"
+      +CheckBox(open_side)+" [1] opens on unbroken side\n"
+      +CheckBox(close_break)+" [1] close crosses [3] open\n"
+      +CheckBox(breaker_sweep)+" Combined breaker takes [3] "+side+"\n"
+      +CheckBox(anchor_sweep)+" [3] takes prior "+(string)Anchor_sweep_lookback+" HTF "+side+"\n"
+      +CheckBox(breaker_wick_pass)+" Combined wick "+DoubleToString(WickPercent(breaker_body,breaker_wick),1)+"%\n"
+      +CheckBox(anchor_wick_pass)+" [3] wick "+DoubleToString(WickPercent(anchor_body,anchor_wick),1)+"%\n"
+      +CheckBox(ready)+" RESULT";
+}
+
+void UpdateLiveChecksText(const MqlRates &source,const MqlRates &mid,const MqlRates &signal,
+                          const double source_prior_high,const double source_prior_low,
+                          const double mid_prior_high,const double mid_prior_low)
+{
+   const string checks="LIVE CLOSED "+signal_label+" CANDLES  |  "+TimeToString(signal.time,TIME_DATE|TIME_MINUTES)
+      +"\n\n"+BuildFastChecks(mid,signal,mid_prior_high,mid_prior_low)
+      +"\n\n"+BuildSlowChecks(source,mid,signal,source_prior_high,source_prior_low);
+   ObjectSetString(0,object_prefix+"Checks",OBJPROP_TEXT,checks);
+}
+
+void SetDashboardLine(const int row,const string text,const color line_color)
+{
+   if(row<0 || row>=dashboard_line_count)
+      return;
+   const string name=object_prefix+"CheckLine"+(string)row;
+   ObjectSetString(0,name,OBJPROP_TEXT,text);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,line_color);
+}
+
+void AddDashboardLine(int &row,const string text,const color line_color)
+{
+   SetDashboardLine(row,text,line_color);
+   row++;
+}
+
+void AddCheckLine(int &row,const bool passed,const string text)
+{
+   AddDashboardLine(row,CheckBox(passed)+"  "+text,(passed ? clrLimeGreen : clrLightCoral));
+}
+
+void AddFastDashboardChecks(const MqlRates &mid,const MqlRates &signal,
+                            const double prior_high,const double prior_low,int &row)
+{
+   if(mid.close==mid.open)
+   {
+      AddDashboardLine(row,"ONE-CANDLE  [2] -> [1]  |  WAITING",clrDeepSkyBlue);
+      AddCheckLine(row,false,"Anchor [2] direction: doji");
+      return;
+   }
+   const bool sell=(mid.close>mid.open);
+   const string side=(sell ? "high" : "low");
+   const bool breaker_direction=(sell ? signal.close<signal.open : signal.close>signal.open);
+   const bool close_break=(sell ? signal.close<mid.open : signal.close>mid.open);
+   const bool breaker_sweep=(sell ? signal.high>mid.high : signal.low<mid.low);
+   const bool anchor_sweep=(sell ? mid.high>prior_high : mid.low<prior_low);
+   const double breaker_body=MathAbs(signal.close-signal.open);
+   const double breaker_wick=(sell ? signal.close-signal.low : signal.high-signal.close);
+   const double anchor_body=MathAbs(mid.close-mid.open);
+   const double anchor_wick=(sell ? mid.open-mid.low : mid.high-mid.close);
+   const bool breaker_wick_pass=WickPass(breaker_body,breaker_wick);
+   const bool anchor_wick_pass=WickPass(anchor_body,anchor_wick);
+   const bool ready=breaker_direction && close_break && (breaker_sweep || anchor_sweep)
+                    && breaker_wick_pass && anchor_wick_pass;
+   AddDashboardLine(row,"ONE-CANDLE  [2] -> [1]  |  "+(sell ? "SELL" : "BUY"),clrDeepSkyBlue);
+   AddCheckLine(row,true,"Anchor [2] "+(sell ? "bullish" : "bearish"));
+   AddCheckLine(row,breaker_direction,"Breaker [1] "+(sell ? "bearish" : "bullish"));
+   AddCheckLine(row,close_break,"[1] close crosses [2] open");
+   AddCheckLine(row,breaker_sweep,"[1] takes [2] "+side);
+   AddCheckLine(row,anchor_sweep,"[2] takes prior "+(string)Anchor_sweep_lookback+" HTF "+side);
+   AddCheckLine(row,breaker_wick_pass,"[1] wick "+DoubleToString(WickPercent(breaker_body,breaker_wick),1)+"%");
+   AddCheckLine(row,anchor_wick_pass,"[2] wick "+DoubleToString(WickPercent(anchor_body,anchor_wick),1)+"%");
+   AddCheckLine(row,ready,"ONE-CANDLE RESULT");
+}
+
+void AddSlowDashboardChecks(const MqlRates &source,const MqlRates &mid,const MqlRates &signal,
+                            const double prior_high,const double prior_low,int &row)
+{
+   if(source.close==source.open)
+   {
+      AddDashboardLine(row,"TWO-CANDLE  [3] -> [2]+[1]  |  WAITING",clrGold);
+      AddCheckLine(row,false,"Anchor [3] direction: doji");
+      return;
+   }
+   const bool sell=(source.close>source.open);
+   const string side=(sell ? "high" : "low");
+   const double breaker_open=mid.open;
+   const double breaker_close=signal.close;
+   const double breaker_high=MathMax(mid.high,signal.high);
+   const double breaker_low=MathMin(mid.low,signal.low);
+   const bool breaker_direction=(sell ? breaker_close<breaker_open : breaker_close>breaker_open);
+   const bool open_side=(sell ? signal.open>=source.open : signal.open<=source.open);
+   const bool close_break=(sell ? signal.close<source.open : signal.close>source.open);
+   const bool breaker_sweep=(sell ? breaker_high>source.high : breaker_low<source.low);
+   const bool anchor_sweep=(sell ? source.high>prior_high : source.low<prior_low);
+   const double breaker_body=MathAbs(breaker_close-breaker_open);
+   const double breaker_wick=(sell ? breaker_close-breaker_low : breaker_high-breaker_close);
+   const double anchor_body=MathAbs(source.close-source.open);
+   const double anchor_wick=(sell ? source.open-source.low : source.high-source.close);
+   const bool breaker_wick_pass=WickPass(breaker_body,breaker_wick);
+   const bool anchor_wick_pass=WickPass(anchor_body,anchor_wick);
+   const bool ready=breaker_direction && open_side && close_break && (breaker_sweep || anchor_sweep)
+                    && breaker_wick_pass && anchor_wick_pass;
+   AddDashboardLine(row,"TWO-CANDLE  [3] -> [2]+[1]  |  "+(sell ? "SELL" : "BUY"),clrGold);
+   AddCheckLine(row,true,"Anchor [3] "+(sell ? "bullish" : "bearish"));
+   AddCheckLine(row,breaker_direction,"Combined [2]+[1] "+(sell ? "bearish" : "bullish"));
+   AddCheckLine(row,open_side,"[1] opens on unbroken side");
+   AddCheckLine(row,close_break,"[1] close crosses [3] open");
+   AddCheckLine(row,breaker_sweep,"Combined breaker takes [3] "+side);
+   AddCheckLine(row,anchor_sweep,"[3] takes prior "+(string)Anchor_sweep_lookback+" HTF "+side);
+   AddCheckLine(row,breaker_wick_pass,"Combined wick "+DoubleToString(WickPercent(breaker_body,breaker_wick),1)+"%");
+   AddCheckLine(row,anchor_wick_pass,"[3] wick "+DoubleToString(WickPercent(anchor_body,anchor_wick),1)+"%");
+   AddCheckLine(row,ready,"TWO-CANDLE RESULT");
+}
+
+void UpdateLiveChecks(const MqlRates &source,const MqlRates &mid,const MqlRates &signal,
+                      const double source_prior_high,const double source_prior_low,
+                      const double mid_prior_high,const double mid_prior_low)
+{
+   int row=0;
+   AddDashboardLine(row,"LIVE CLOSED "+signal_label+"  |  "+TimeToString(signal.time,TIME_DATE|TIME_MINUTES),clrWhite);
+   AddDashboardLine(row,"",clrWhite);
+   AddFastDashboardChecks(mid,signal,mid_prior_high,mid_prior_low,row);
+   AddDashboardLine(row,"",clrWhite);
+   AddSlowDashboardChecks(source,mid,signal,source_prior_high,source_prior_low,row);
+   for(;row<dashboard_line_count;row++)
+      SetDashboardLine(row,"",clrWhite);
+}
+
+void ShowDashboardWaiting()
+{
+   SetDashboardLine(0,"WAITING FOR COMPLETE "+signal_label+" HISTORY",clrGold);
+   SetDashboardLine(1,"M90 needs data in all three M30 sections.",clrLightCoral);
+   for(int i=2;i<dashboard_line_count;i++)
+      SetDashboardLine(i,"",clrWhite);
 }
 
 int OnInit()
@@ -82,21 +291,46 @@ int OnInit()
    history_warning_bar=0;
    buy_signal_count=0;
    sell_signal_count=0;
+   const string panel=object_prefix+"Panel";
+   ObjectCreate(0,panel,OBJ_RECTANGLE_LABEL,0,0,0);
+   ObjectSetInteger(0,panel,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,panel,OBJPROP_XDISTANCE,8);
+   ObjectSetInteger(0,panel,OBJPROP_YDISTANCE,8);
+   ObjectSetInteger(0,panel,OBJPROP_XSIZE,350);
+   ObjectSetInteger(0,panel,OBJPROP_YSIZE,385);
+   ObjectSetInteger(0,panel,OBJPROP_BGCOLOR,ColorToARGB(clrBlack,145));
+   ObjectSetInteger(0,panel,OBJPROP_COLOR,clrDimGray);
+   ObjectSetInteger(0,panel,OBJPROP_WIDTH,1);
+   ObjectSetInteger(0,panel,OBJPROP_BACK,false);
+   ObjectSetInteger(0,panel,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,panel,OBJPROP_HIDDEN,false);
    const string legend=object_prefix+"Legend";
    ObjectCreate(0,legend,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,legend,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,legend,OBJPROP_XDISTANCE,12);
-   ObjectSetInteger(0,legend,OBJPROP_YDISTANCE,24);
+   ObjectSetInteger(0,legend,OBJPROP_XDISTANCE,20);
+   ObjectSetInteger(0,legend,OBJPROP_YDISTANCE,18);
    ObjectSetInteger(0,legend,OBJPROP_COLOR,clrGold);
-   ObjectSetInteger(0,legend,OBJPROP_FONTSIZE,10);
-   ObjectSetString(0,legend,OBJPROP_TEXT,"Luminar-2 | Signal: "+signal_label+" | Gold = [2]/[3] anchor body | Blue = [1] break body | Dashed = zone");
+   ObjectSetInteger(0,legend,OBJPROP_FONTSIZE,11);
+   ObjectSetString(0,legend,OBJPROP_TEXT,"LUMINAR-2  |  HTF: "+signal_label);
    const string counter=object_prefix+"Counter";
    ObjectCreate(0,counter,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,counter,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,counter,OBJPROP_XDISTANCE,12);
-   ObjectSetInteger(0,counter,OBJPROP_YDISTANCE,42);
+   ObjectSetInteger(0,counter,OBJPROP_XDISTANCE,20);
+   ObjectSetInteger(0,counter,OBJPROP_YDISTANCE,40);
    ObjectSetInteger(0,counter,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,counter,OBJPROP_FONTSIZE,10);
+   ObjectSetInteger(0,counter,OBJPROP_FONTSIZE,9);
+   for(int i=0;i<dashboard_line_count;i++)
+   {
+      const string line=object_prefix+"CheckLine"+(string)i;
+      ObjectCreate(0,line,OBJ_LABEL,0,0,0);
+      ObjectSetInteger(0,line,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+      ObjectSetInteger(0,line,OBJPROP_XDISTANCE,20);
+      ObjectSetInteger(0,line,OBJPROP_YDISTANCE,62+i*14);
+      ObjectSetInteger(0,line,OBJPROP_COLOR,clrWhite);
+      ObjectSetInteger(0,line,OBJPROP_FONTSIZE,8);
+      ObjectSetInteger(0,line,OBJPROP_SELECTABLE,false);
+   }
+   ShowDashboardWaiting();
    UpdateSignalCounter();
    Print("Luminar-2 visualization ready: ",signal_label,
          ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%.");
@@ -104,8 +338,7 @@ int OnInit()
 }
 
 bool DrawSignal(const EntrySignal signal,const MqlRates &anchor,const MqlRates &mid,const MqlRates &breaker,
-                const datetime confirmation,const int anchor_shift,const int breaker_shift,
-                const double prior_high,const double prior_low)
+                const datetime confirmation,const int anchor_shift,const int breaker_shift)
 {
    const string direction=(signal==ENTRY_SELL ? "SELL" : "BUY");
    const string name=object_prefix+direction+"_"+IntegerToString((long)anchor.time);
@@ -227,40 +460,6 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &anchor,const MqlRates &
       if(!ObjectSetInteger(0,labelMid,OBJPROP_SELECTABLE,false)) success=false;
       if(!ObjectSetString(0,labelMid,OBJPROP_TOOLTIP,"MIDDLE BODY [2] | "+details)) success=false;
    }
-   const bool is_sell=(signal==ENTRY_SELL);
-   const double breaker_open=(anchor_shift==3 ? mid.open : breaker.open);
-   const double breaker_close=breaker.close;
-   const double breaker_high=(anchor_shift==3 ? MathMax(mid.high,breaker.high) : breaker.high);
-   const double breaker_low=(anchor_shift==3 ? MathMin(mid.low,breaker.low) : breaker.low);
-   const double breaker_body=MathAbs(breaker_close-breaker_open);
-   const double breaker_wick=(is_sell ? breaker_close-breaker_low : breaker_high-breaker_close);
-   const double anchor_body=MathAbs(anchor.close-anchor.open);
-   const double anchor_wick=(is_sell ? anchor.open-anchor.low : anchor.high-anchor.close);
-   const bool breaker_sweep=(is_sell ? breaker_high>anchor.high : breaker_low<anchor.low);
-   const bool prior_sweep=(is_sell ? anchor.high>prior_high : anchor.low<prior_low);
-   const string marker_breaker=(breaker_sweep ? "[x]" : "[ ]");
-   const string marker_prior=(prior_sweep ? "[x]" : "[ ]");
-   const string breaker_name=(anchor_shift==3 ? "[2]+[1] combined" : "[1] breaker");
-   string checks=direction+" CHECKS\n"
-      +"[x] Anchor["+(string)anchor_shift+"] "+(is_sell ? "bullish" : "bearish")+"\n"
-      +"[x] "+breaker_name+" "+(is_sell ? "bearish" : "bullish")+"\n"
-      +"[x] Close across anchor open\n";
-   if(anchor_shift==3)
-      checks+="[x] [1] open on unbroken side\n";
-   checks+=marker_breaker+" Breaker takes anchor "+(is_sell ? "high" : "low")+"\n"
-      +marker_prior+" Anchor takes prior "+(string)Anchor_sweep_lookback+" HTF "+(is_sell ? "high" : "low")+"\n"
-      +"[x] "+breaker_name+" wick "+DoubleToString(100.0*breaker_wick/(breaker_body+breaker_wick),1)+"%\n"
-      +"[x] Anchor wick "+DoubleToString(100.0*anchor_wick/(anchor_body+anchor_wick),1)+"%";
-   const string checklist=name+"_Checks";
-   const double check_price=(is_sell ? MathMax(anchor.high,breaker_high) : MathMin(anchor.low,breaker_low));
-   if(!ObjectCreate(0,checklist,OBJ_TEXT,0,geometry.arrow_time+1,check_price)) success=false;
-   if(!ObjectSetString(0,checklist,OBJPROP_TEXT,checks)) success=false;
-   if(!ObjectSetInteger(0,checklist,OBJPROP_ANCHOR,is_sell ? ANCHOR_LEFT_UPPER : ANCHOR_LEFT_LOWER)) success=false;
-   if(!ObjectSetInteger(0,checklist,OBJPROP_COLOR,clrWhite)) success=false;
-   if(!ObjectSetInteger(0,checklist,OBJPROP_FONTSIZE,8)) success=false;
-   if(!ObjectSetInteger(0,checklist,OBJPROP_BACK,false)) success=false;
-   if(!ObjectSetInteger(0,checklist,OBJPROP_SELECTABLE,false)) success=false;
-   if(!ObjectSetString(0,checklist,OBJPROP_TOOLTIP,details)) success=false;
    if(!success)
       Print("Signal drawing failed: ",name," error ",GetLastError());
    ChartRedraw(0);
@@ -356,13 +555,10 @@ void ProcessHigherTimeframe()
    if(current_bar==0 || current_bar==last_bar)
       return;
 
-   // First attachment can occur mid-candle: wait for the next genuine new bar.
-   if(last_bar==0)
-   {
+   const bool observe_only=(last_bar==0);
+   if(observe_only)
       last_bar=current_bar;
-      return;
-   }
-   if(now<next_history_retry)
+   if(!observe_only && now<next_history_retry)
       return;
    MqlRates source,mid,signal;
    if(!ReadClosedCandles(SIGNAL_TIMEFRAME,current_bar,source,mid,signal))
@@ -385,6 +581,9 @@ void ProcessHigherTimeframe()
    double mid_prior_low=-1.0e100;
    ReadPriorExtremes(source.time,source_prior_high,source_prior_low);
    ReadPriorExtremes(mid.time,mid_prior_high,mid_prior_low);
+   UpdateLiveChecks(source,mid,signal,source_prior_high,source_prior_low,mid_prior_high,mid_prior_low);
+   if(observe_only)
+      return;
    int anchor_shift=0;
    const EntrySignal entry=DetectEntry(source,mid,signal,Body_to_wick_ratio,
                                        source_prior_high,source_prior_low,mid_prior_high,mid_prior_low,
@@ -397,8 +596,6 @@ void ProcessHigherTimeframe()
    MqlRates anchor;
    if(anchor_shift==3) anchor=source;
    else anchor=mid;
-   const double anchor_prior_high=(anchor_shift==3 ? source_prior_high : mid_prior_high);
-   const double anchor_prior_low=(anchor_shift==3 ? source_prior_low : mid_prior_low);
    MqlRates breaker;
    breaker=signal;
 
@@ -413,7 +610,7 @@ void ProcessHigherTimeframe()
          " | mid[2] O/H/L/C=",mid.open,"/",mid.high,"/",mid.low,"/",mid.close,
          " | break[1] O/H/L/C=",breaker.open,"/",breaker.high,"/",breaker.low,"/",breaker.close,
          " | directional wick %=",DoubleToString(100.0*wick/(body+wick),4));
-   DrawSignal(entry,anchor,mid,breaker,current_bar,anchor_shift,1,anchor_prior_high,anchor_prior_low);
+   DrawSignal(entry,anchor,mid,breaker,current_bar,anchor_shift,1);
    AddInterestArea(entry,anchor,breaker,current_bar);
 }
 
