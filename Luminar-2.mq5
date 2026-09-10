@@ -81,7 +81,7 @@ int OnInit()
    return INIT_SUCCEEDED;
 }
 
-bool DrawSignal(const EntrySignal signal,const MqlRates &anchor,const MqlRates &breaker,
+bool DrawSignal(const EntrySignal signal,const MqlRates &anchor,const MqlRates &mid,const MqlRates &breaker,
                 const datetime confirmation,const int anchor_shift,const int breaker_shift)
 {
    const string direction=(signal==ENTRY_SELL ? "SELL" : "BUY");
@@ -168,6 +168,42 @@ bool DrawSignal(const EntrySignal signal,const MqlRates &anchor,const MqlRates &
    if(!ObjectSetInteger(0,label1,OBJPROP_BACK,false)) success=false;
    if(!ObjectSetInteger(0,label1,OBJPROP_SELECTABLE,false)) success=false;
    if(!ObjectSetString(0,label1,OBJPROP_TOOLTIP,"BREAK BODY ["+(string)breaker_shift+"] | "+details)) success=false;
+   // Two-candle-break variant: also draw the middle HTF candle[2] between the [3] anchor and [1] breaker.
+   if(anchor_shift==3)
+   {
+      const double mid_top=MathMax(mid.open,mid.close);
+      const double mid_bottom=MathMin(mid.open,mid.close);
+      datetime mid_right=(mid.time+signal_seconds);
+      if(SIGNAL_TIMEFRAME==TF_MN1)
+      {
+         MqlDateTime date;
+         if(TimeToStruct(mid.time,date))
+         {
+            date.mon++;
+            if(date.mon>12) { date.mon=1; date.year++; }
+            mid_right=StructToTime(date);
+         }
+      }
+      const string bodyMid=name+"_BodyMid";
+      if(!ObjectCreate(0,bodyMid,OBJ_RECTANGLE,0,mid.time,mid_top,mid_right,mid_bottom)) success=false;
+      if(!ObjectSetInteger(0,bodyMid,OBJPROP_COLOR,clrGold)) success=false;
+      if(!ObjectSetInteger(0,bodyMid,OBJPROP_FILL,false)) success=false;
+      if(!ObjectSetInteger(0,bodyMid,OBJPROP_STYLE,STYLE_SOLID)) success=false;
+      if(!ObjectSetInteger(0,bodyMid,OBJPROP_WIDTH,1)) success=false;
+      if(!ObjectSetInteger(0,bodyMid,OBJPROP_BACK,false)) success=false;
+      if(!ObjectSetInteger(0,bodyMid,OBJPROP_SELECTABLE,false)) success=false;
+      if(!ObjectSetInteger(0,bodyMid,OBJPROP_HIDDEN,false)) success=false;
+      if(!ObjectSetString(0,bodyMid,OBJPROP_TOOLTIP,"MIDDLE BODY [2] | "+details)) success=false;
+      const string labelMid=name+"_BodyMidLabel";
+      if(!ObjectCreate(0,labelMid,OBJ_TEXT,0,mid.time,mid_top)) success=false;
+      if(!ObjectSetString(0,labelMid,OBJPROP_TEXT,signal_label+" [2]")) success=false;
+      if(!ObjectSetInteger(0,labelMid,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER)) success=false;
+      if(!ObjectSetInteger(0,labelMid,OBJPROP_COLOR,clrGold)) success=false;
+      if(!ObjectSetInteger(0,labelMid,OBJPROP_FONTSIZE,8)) success=false;
+      if(!ObjectSetInteger(0,labelMid,OBJPROP_BACK,false)) success=false;
+      if(!ObjectSetInteger(0,labelMid,OBJPROP_SELECTABLE,false)) success=false;
+      if(!ObjectSetString(0,labelMid,OBJPROP_TOOLTIP,"MIDDLE BODY [2] | "+details)) success=false;
+   }
    if(!success)
       Print("Signal drawing failed: ",name," error ",GetLastError());
    ChartRedraw(0);
@@ -263,7 +299,7 @@ void ProcessHigherTimeframe()
          " | mid[2] O/H/L/C=",mid.open,"/",mid.high,"/",mid.low,"/",mid.close,
          " | break[1] O/H/L/C=",breaker.open,"/",breaker.high,"/",breaker.low,"/",breaker.close,
          " | directional wick %=",DoubleToString(100.0*wick/(body+wick),4));
-   DrawSignal(entry,anchor,breaker,current_bar,anchor_shift,1);
+   DrawSignal(entry,anchor,mid,breaker,current_bar,anchor_shift,1);
    AddInterestArea(entry,anchor,breaker,current_bar);
 }
 
