@@ -35,6 +35,8 @@ input double Server_GMT_offset  =-999;    // Broker GMT offset hours (-999 = aut
 input bool   Show_Previous_Ranges=true; // Show ranges + volume profiles for previous days (OFF = today only)
 input int    Profile_Levels     =20;      // Volume profile price bins
 input int    Profile_MaxWidth   =60;      // Volume profile max width (minutes)
+input int    Profile_FontSize   =7;       // Volume profile text font size
+input color  Profile_TextColor  =clrWhite;  // Volume profile text color
 
 string g_prefix;
 int    g_r1_h,g_r1_m,g_r1_ih,g_r1_im;
@@ -335,6 +337,11 @@ void DrawVolumeProfile(const string base,const color rc,
    const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
    const color fill=BlendBoxColor(rc,chart_bg,InpBoxOpacity);
    const int max_sec=Profile_MaxWidth*60;
+   const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
+   const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
+   const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   const double bin_px=((hi-lo)>0.0 && pmax>pmin && hpix>0.0)
+                       ? step*hpix/(pmax-pmin) : 8.0;
    for(int k=0;k<levels;k++)
    {
       if(vol[k]<=0.0)
@@ -342,16 +349,36 @@ void DrawVolumeProfile(const string base,const color rc,
       const int w=MathMax(1,(int)MathRound((double)max_sec*vol[k]/vmax));
       const datetime t1=rs-(datetime)w;
       const string nm=base+"_VP"+IntegerToString(k);
-      if(!ObjectCreate(0,nm,OBJ_RECTANGLE,0,t1,bin_lo[k],rs,bin_hi[k]))
-         continue;
-      ObjectSetInteger(0,nm,OBJPROP_COLOR,fill);
-      ObjectSetInteger(0,nm,OBJPROP_BGCOLOR,fill);
-      ObjectSetInteger(0,nm,OBJPROP_FILL,true);
-      ObjectSetInteger(0,nm,OBJPROP_STYLE,STYLE_SOLID);
-      ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
-      ObjectSetInteger(0,nm,OBJPROP_BACK,false);
-      ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
-      ObjectSetInteger(0,nm,OBJPROP_HIDDEN,false);
+      if(ObjectCreate(0,nm,OBJ_RECTANGLE,0,t1,bin_lo[k],rs,bin_hi[k]))
+      {
+         ObjectSetInteger(0,nm,OBJPROP_COLOR,fill);
+         ObjectSetInteger(0,nm,OBJPROP_BGCOLOR,fill);
+         ObjectSetInteger(0,nm,OBJPROP_FILL,true);
+         ObjectSetInteger(0,nm,OBJPROP_STYLE,STYLE_SOLID);
+         ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
+         ObjectSetInteger(0,nm,OBJPROP_BACK,false);
+         ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
+         ObjectSetInteger(0,nm,OBJPROP_HIDDEN,false);
+         const string txt=IntegerToString((long)MathRound(vol[k]));
+         int fs=Profile_FontSize;
+         int fh=(int)MathFloor(bin_px*0.7);
+         if(fh>=5)
+            fs=MathMin(fs,fh);
+         if(fs<4)
+            fs=4;
+         const double cy=(bin_lo[k]+bin_hi[k])/2.0;
+         const string nmT=nm+"_TXT";
+         if(ObjectCreate(0,nmT,OBJ_TEXT,0,t1,cy))
+         {
+            ObjectSetString(0,nmT,OBJPROP_TEXT,txt);
+            ObjectSetInteger(0,nmT,OBJPROP_COLOR,Profile_TextColor);
+            ObjectSetInteger(0,nmT,OBJPROP_FONTSIZE,fs);
+            ObjectSetInteger(0,nmT,OBJPROP_ANCHOR,ANCHOR_RIGHT);
+            ObjectSetInteger(0,nmT,OBJPROP_BACK,false);
+            ObjectSetInteger(0,nmT,OBJPROP_SELECTABLE,false);
+            ObjectSetInteger(0,nmT,OBJPROP_HIDDEN,false);
+         }
+      }
    }
 }
 
