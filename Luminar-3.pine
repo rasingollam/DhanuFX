@@ -1,13 +1,14 @@
-// Luminar-3 — Pine Script port of the MT5 range EA
-// Run on an intraday chart, ideally 1-minute, so the aggregation matches the MQL5 M1 logic.
-// NY time is computed by TradingView via the "America/New_York" exchange timezone (DST handled
-// automatically), so there is no broker GMT offset input here.
+// Luminar-3 — Pine Script port of the MT5 range EA (v3)
+// Run on an intraday chart; use M1 so aggregation matches the MQL5 M1 logic.
+// NY time is computed by TradingView via the "America/New_York" exchange timezone
+// (DST handled automatically), so there is no broker GMT offset input here.
+// NOTE: Pine time is in milliseconds; all window/length arithmetic uses ms.
 
 //@version=5
 indicator("Luminar-3 (MT5 Port)", overlay=true,
      max_boxes_count=5000, max_lines_count=5000, max_labels_count=5000)
 
-//------------ inputs (mirror the MQL5 inputs) ------------
+//------------ mirrored EA inputs ------------
 const color COL_R1 = #1E90FF
 const color COL_R2 = #FFD700
 const color COL_R3 = #00FF00
@@ -32,15 +33,17 @@ i_r3im = input.int(15,      "Range 3 inside length (min)", minval = 1, maxval = 
 c_r3   = input.color(COL_R3, "Range 3 box color", group = "Range 3")
 
 c_inside  = input.color(COL_INS, "Inside box color", group = "Common")
-i_opac    = input.int(60,     "Box opacity %",    minval = 0,    maxval = 95, group = "Common")
+i_opac    = input.int(55,     "Box transparency %", minval = 0,   maxval = 95, group = "Common")
 c_mid1    = input.color(color.white, "Range mid line color", group = "Common")
 c_mid2    = input.color(color.orange, "Inside mid line color", group = "Common")
 i_showPrev= input.bool(true,  "Show previous ranges (OFF = today only)", group = "Common")
+i_bsVol   = input.bool(true,  "Show buy/sell/delta volumes", group = "Common")
 i_vplvls  = input.int(20,     "Volume profile price bins", minval = 2, group = "Volume Profile")
 i_vpw     = input.int(60,     "Volume profile max width (min)", minval = 5, group = "Volume Profile")
 i_vptxt   = input.color(color.white, "Volume profile text color", group = "Volume Profile")
-i_vpfs    = input.string("small", "Volume profile text size",
-     options = ["tiny", "small", "normal", "large"], group = "Volume Profile")
+i_vapct   = input.int(70,     "Value area volume % (built around POC)", group = "Volume Profile")
+i_vac     = input.color(color.white, "Value area bin + VAH/VAL label color", group = "Volume Profile")
+i_pocc    = input.color(color.yellow, "Point of control bin + label color", group = "Volume Profile")
 
 //------------ helpers ------------
 f_pad2(x) =>
@@ -60,7 +63,7 @@ f_sess(h, m) =>
     mm = ms % 60
     f_pad2(h) + f_pad2(m) + "-" + f_pad2(hh) + f_pad2(mm)
 
-// NY open (unix) of the bar whose NY clock equals hh:mm
+// NY open (ms) of the bar whose NY clock equals hh:mm
 f_nyopen(hh, mm) =>
     time(timeframe.period, f_sess(hh, mm), "America/New_York")
 
@@ -85,17 +88,18 @@ f_arrMin(a) =>
 f_nyDateKey(t) =>
     na(t) ? -1 : year(t, "America/New_York") * 10000 + month(t, "America/New_York") * 100 + dayofmonth(t, "America/New_York")
 
-f_fontSize() =>
+// label size auto-selected from how many chart bars fit across the range
+f_barSize(rw_bars) =>
     string s = size.small
-    if i_vpfs == "tiny"
-        s := size.tiny
-    else if i_vpfs == "normal"
+    if rw_bars >= 60
         s := size.normal
-    else if i_vpfs == "large"
-        s := size.large
+    else if rw_bars >= 25
+        s := size.small
+    else
+        s := size.tiny
     s
 
-//------------ range configuration ------------
+//------------ range configuration (parsed once) ------------
 [rh1, rm1]   = f_parse(i_r1s)
 [rih1, rim1] = f_parse(i_r1i)
 [rh2, rm2]   = f_parse(i_r2s)
@@ -103,7 +107,7 @@ f_fontSize() =>
 [rh3, rm3]   = f_parse(i_r3s)
 [rih3, rim3] = f_parse(i_r3i)
 
-//------------ per-bar detection ------------
+//------------ per-bar detection (ms) ------------
 rs1  = f_nyopen(rh1, rm1)
 ins1 = f_nyopen(rih1, rim1)
 rs2  = f_nyopen(rh2, rm2)
@@ -118,68 +122,73 @@ nIn   = array.from(i_r1im, i_r2im, i_r3im)
 cMain = array.from(c_r1, c_r2, c_r3)
 
 //------------ state ------------
-var float  g_mainRs  = na    // active main window start (unix)
-var float  g_mRe     = na    // active main window end
-var int    g_mainIdx = -1    // active main range index
+var float  g_mainRs  = na
+var float  g_mRe     = na
+var int    g_mainIdx = -1
 var array<float> g_mH = array.new_float()
 var array<float> g_mL = array.new_float()
+var array<float> g_mO = array.new_float()
+var array<float> g_mC = array.new_float()
 var array<float> g_mV = array.new_float()
 
-var float  g_inRs    = na
-var float  g_inRe    = na
-var int    g_inIdx   = -1
+var float  g_inRs      = na
+var float  g_inRe      = na
+var int    g_inIdx     = -1
+var float  g_inMainRs  = na
+var float  g_inMainRe  = na
 var float  g_inLineEnd = na
 var array<float> g_iH = array.new_float()
 var array<float> g_iL = array.new_float()
 var array<float> g_iV = array.new_float()
 
-bt   = time           // bar open (unix)
-prev = time[1]
+bt   = time           // bar open (ms)
+prev = time[1]        // previous bar open (ms)
 todayKey = f_nyDateKey(time(timeframe.period, "0000-2359", "America/New_York"))
 
-//---- which main window is running on this bar ----
+//---- which main window runs on this bar ----
 actM = -1
 for k = 0 to 2
     sk = array.get(rS, k)
-    if not na(sk) and bt >= sk and bt < sk + array.get(nMain, k) * 60
+    if not na(sk) and bt >= sk and bt < sk + array.get(nMain, k) * 60000
         actM := k
 
 actI = -1
 for k = 0 to 2
     sk = array.get(rIS, k)
-    if not na(sk) and bt >= sk and bt < sk + array.get(nIn, k) * 60
+    if not na(sk) and bt >= sk and bt < sk + array.get(nIn, k) * 60000
         actI := k
 
-//=== 1) COMPLETIONS (draw finished ranges) =================
+//=== 1) MAIN COMPLETION (draw full range box + lines + volume profile) ==
 if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0
     if prev >= g_mainRs and prev < g_mRe and bt >= g_mRe
-        k   = g_mainIdx
-        rs  = g_mainRs
-        re  = g_mRe
-        hi  = f_arrMax(g_mH)
-        lo  = f_arrMin(g_mL)
+        k = g_mainIdx
+        rs = g_mainRs
+        re = g_mRe
+        hi = f_arrMax(g_mH)
+        lo = f_arrMin(g_mL)
         if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey)
-            col    = array.get(cMain, k)
-            mins   = array.get(nMain, k)
-            lineEnd = rs + 4 * mins * 60
-            // main box
+            col     = array.get(cMain, k)
+            mins    = array.get(nMain, k)
+            lineEnd = rs + 4 * mins * 60000
+            // box
             box.new(rs, hi, re, lo, xloc.bar_time,
                  border_color = col, bgcolor = color.new(col, i_opac), border_width = 1)
-            // solid high / low lines + dotted mid line
+            // solid high/low + dotted mid lines
             line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid)
             line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = line.style_solid)
             line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
                  color = c_mid1, style = line.style_dotted)
-            // volume profile
-            step = (hi - lo) / i_vplvls
-            vols = array.new_float(i_vplvls, 0.0)
+            // ---- volume profile (overlap-weighted bins) ----
+            levels = math.max(2, i_vplvls)
+            step   = (hi - lo) / levels
+            vols   = array.new_float(levels, 0.0)
             if array.size(g_mH) > 0
                 for b = 0 to array.size(g_mH) - 1
                     h1 = array.get(g_mH, b)
                     l1 = array.get(g_mL, b)
                     v1 = array.get(g_mV, b)
                     sp = h1 - l1
-                    for q = 0 to i_vplvls - 1
+                    for q = 0 to levels - 1
                         blo = lo + q * step
                         bhi = lo + (q + 1) * step
                         ol  = math.min(h1, bhi) - math.max(l1, blo)
@@ -188,74 +197,157 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0
                             array.set(vols, q, array.get(vols, q) + v1 * w)
             vmax = f_arrMax(vols)
             if not na(vmax) and vmax > 0
-                for q = 0 to i_vplvls - 1
+                // POC + value area expansion
+                total = 0.0
+                for q = 0 to levels - 1
+                    total += array.get(vols, q)
+                int poc = 0
+                for q = 1 to levels - 1
+                    if array.get(vols, q) > array.get(vols, poc)
+                        poc := q
+                va_lo = poc
+                va_hi = poc
+                if total > 0
+                    varea = array.get(vols, poc)
+                    tar = math.min(1.0, i_vapct / 100.0) * total
+                    while varea < tar and (va_lo > 0 or va_hi < levels - 1)
+                        above = va_hi < levels - 1 ? array.get(vols, va_hi + 1) : -1.0
+                        below = va_lo > 0         ? array.get(vols, va_lo - 1) : -1.0
+                        if above < 0
+                            va_lo -= 1
+                            varea += array.get(vols, va_lo)
+                        else if below < 0
+                            va_hi += 1
+                            varea += array.get(vols, va_hi)
+                        else if above >= below
+                            va_hi += 1
+                            varea += array.get(vols, va_hi)
+                        else
+                            va_lo -= 1
+                            varea += array.get(vols, va_lo)
+                // draw bins (colored) + per-bin volume values
+                for q = 0 to levels - 1
                     vq = array.get(vols, q)
                     if vq > 0
-                        wq = math.max(1, math.round(i_vpw * 60 * vq / vmax))
+                        wq = math.max(1, math.round(i_vpw * 60000 * vq / vmax))
                         t1 = rs - wq
                         blo = lo + q * step
                         bhi = lo + (q + 1) * step
+                        bclr = (q == poc or q == va_lo or q == va_hi)
+                             ? color.new(i_pocc, 35)
+                             : (q >= va_lo and q <= va_hi ? color.new(i_vac, 35) : color.new(col, i_opac))
                         box.new(t1, bhi, rs, blo, xloc.bar_time,
-                             border_color = color.new(col, i_opac), bgcolor = color.new(col, i_opac), border_width = 1)
+                             border_color = bclr, bgcolor = bclr, border_width = 1)
                         label.new(t1, (blo + bhi) / 2, str.tostring(int(math.round(vq))),
-                             xloc = xloc.bar_time, color = color(na), textcolor = i_vptxt,
-                             style = label.style_none, size = f_fontSize())
-        // reset state
-        g_mainRs  := na
-        g_mRe     := na
-        g_mainIdx := -1
-        array.clear(g_mH)
-        array.clear(g_mL)
-        array.clear(g_mV)
+                             xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
+                             style = label.style_none, size = size.tiny)
+                // POC / VAH / VAL labels (word only), left of the profile
+                vahi = lo + va_hi * step + step
+                valo = lo + va_lo * step
+                pocp = lo + poc * step + step / 2
+                xL   = rs - i_vpw * 60000 - 10 * 60000
+                label.new(xL, pocp, "POC", xloc = xloc.bar_time, color = na,
+                     textcolor = i_pocc, style = label.style_none, size = size.small)
+                label.new(xL, vahi, "VAH", xloc = xloc.bar_time, color = na,
+                     textcolor = i_vac, style = label.style_none, size = size.small)
+                label.new(xL, valo, "VAL", xloc = xloc.bar_time, color = na,
+                     textcolor = i_vac, style = label.style_none, size = size.small)
+            // ---- buy / sell / delta spread across range top ----
+            if i_bsVol
+                buys = 0.0
+                sells = 0.0
+                if array.size(g_mO) > 0
+                    for b = 0 to array.size(g_mO) - 1
+                        o = array.get(g_mO, b)
+                        c = array.get(g_mC, b)
+                        v = array.get(g_mV, b)
+                        if c > o
+                            buys += v
+                        else if c < o
+                            sells += v
+                        else
+                            buys += v / 2
+                            sells += v / 2
+                diff = buys - sells
+                bw = (re - rs) / 3
+                ybs = hi + (hi - lo) * 0.03
+                rwb = (re - rs) / nz(time - time[1], 60000)
+                s1 = str.tostring(int(math.round(buys)))
+                s2 = str.tostring(int(math.round(sells)))
+                s3 = "Delta " + str.tostring(int(math.round(math.abs(diff))))
+                label.new(rs, ybs, s1, xloc = xloc.bar_time, color = na,
+                     textcolor = color.new(color.lime, 0), style = label.style_none, size = f_barSize(rwb))
+                label.new(rs + bw, ybs, s2, xloc = xloc.bar_time, color = na,
+                     textcolor = color.new(color.red, 0), style = label.style_none, size = f_barSize(rwb))
+                label.new(rs + 2 * bw, ybs, s3, xloc = xloc.bar_time, color = na,
+                     textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
+                     style = label.style_none, size = f_barSize(rwb))
+            // reset state
+            g_mainRs  := na
+            g_mRe     := na
+            g_mainIdx := -1
+            array.clear(g_mH)
+            array.clear(g_mL)
+            array.clear(g_mO)
+            array.clear(g_mC)
+            array.clear(g_mV)
 
-//=== 2) INSIDE completions (independent of main range) ====
+//=== 2) INSIDE COMPLETION (independent of main range) ================
 if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0
     if prev >= g_inRs and prev < g_inRe and bt >= g_inRe
         rsI = g_inRs
         reI = g_inRe
+        giM = not na(g_inMainRs) and g_inMainRs <= rsI and reI <= g_inMainRe
         hiI = f_arrMax(g_iH)
         loI = f_arrMin(g_iL)
-        if not na(hiI) and hiI > loI and (i_showPrev or f_nyDateKey(rsI) == todayKey)
-            leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60 : g_inLineEnd
+        if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey)
+            leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
             box.new(rsI, hiI, reI, loI, xloc.bar_time,
                  border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1)
             line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted)
             line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
                  color = c_mid2, style = line.style_dotted)
             line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = line.style_dotted)
-        g_inRs  := na
-        g_inRe  := na
-        g_inIdx := -1
+        g_inRs      := na
+        g_inRe      := na
+        g_inIdx     := -1
+        g_inLineEnd := na
         array.clear(g_iH)
         array.clear(g_iL)
         array.clear(g_iV)
 
-//=== 3) STARTS / RESETS =================================
+//=== 3) STARTS / RESETS ==============================================
 if actM >= 0
     if array.get(rS, actM) != g_mainRs
         g_mainRs  := array.get(rS, actM)
-        g_mRe     := g_mainRs + array.get(nMain, actM) * 60
+        g_mRe     := g_mainRs + array.get(nMain, actM) * 60000
         g_mainIdx := actM
         array.clear(g_mH)
         array.clear(g_mL)
+        array.clear(g_mO)
+        array.clear(g_mC)
         array.clear(g_mV)
 if actI >= 0
     if array.get(rIS, actI) != g_inRs
-        g_inRs  := array.get(rIS, actI)
-        g_inRe  := g_inRs + array.get(nIn, actI) * 60
-        g_inIdx := actI
+        g_inRs    := array.get(rIS, actI)
+        g_inRe    := g_inRs + array.get(nIn, actI) * 60000
+        g_inIdx   := actI
+        g_inMainRs:= array.get(rS, actI)
+        g_inMainRe:= g_inMainRs + array.get(nMain, actI) * 60000
         if not na(g_mainRs) and g_mainIdx == actI
-            g_inLineEnd := g_mainRs + 4 * array.get(nMain, actI) * 60
+            g_inLineEnd := g_mainRs + 4 * array.get(nMain, actI) * 60000
         else
             g_inLineEnd := na
         array.clear(g_iH)
         array.clear(g_iL)
         array.clear(g_iV)
 
-//=== 4) ACCUMULATE current bar into active windows ======
+//=== 4) ACCUMULATE current bar into active windows ===================
 if actM >= 0
     array.push(g_mH, high)
     array.push(g_mL, low)
+    array.push(g_mO, open)
+    array.push(g_mC, close)
     array.push(g_mV, volume)
 if actI >= 0
     array.push(g_iH, high)
