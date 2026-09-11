@@ -231,11 +231,14 @@ void DrawDottedLevel(const string name,const datetime t1,const datetime t2,
 //| Draw a range box plus its extended high/mid/low dotted lines     |
 //+------------------------------------------------------------------+
 int DrawRangeObjects(const string box_name,const string line_base,const string label,
+                     const color box_color,
                      const datetime s,const datetime e,const datetime line_end)
 {
    MqlRates bars[];
    const int copied=CopyRates(_Symbol,PERIOD_M1,s,e-1,bars);
-   if(copied<InpMinM1Bars)
+   const int minutes=(int)((e-s)/60);
+   const int want=MathMin(InpMinM1Bars,minutes/2+1);
+   if(copied<want)
       return 0;
    double hi=-1.0e100;
    double lo=1.0e100;
@@ -250,8 +253,8 @@ int DrawRangeObjects(const string box_name,const string line_base,const string l
    if(ObjectCreate(0,box_name,OBJ_RECTANGLE,0,s,lo,e,hi))
    {
       const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
-      const color fill=BlendBoxColor(InpBoxColor,chart_bg,InpBoxOpacity);
-      ObjectSetInteger(0,box_name,OBJPROP_COLOR,InpBoxColor);
+      const color fill=BlendBoxColor(box_color,chart_bg,InpBoxOpacity);
+      ObjectSetInteger(0,box_name,OBJPROP_COLOR,box_color);
       ObjectSetInteger(0,box_name,OBJPROP_BGCOLOR,fill);
       ObjectSetInteger(0,box_name,OBJPROP_FILL,true);
       ObjectSetInteger(0,box_name,OBJPROP_STYLE,STYLE_SOLID);
@@ -268,11 +271,11 @@ int DrawRangeObjects(const string box_name,const string line_base,const string l
    const double mid=(hi+lo)/2.0;
    const string lt=TimeToString(e,TIME_DATE|TIME_MINUTES)+".."+
                    TimeToString(line_end,TIME_DATE|TIME_MINUTES)+" | ";
-   DrawDottedLevel(line_base+"_H",e,line_end,hi,InpBoxColor,
+   DrawDottedLevel(line_base+"_H",e,line_end,hi,box_color,
       lt+label+" high "+DoubleToString(hi,_Digits));
    DrawDottedLevel(line_base+"_M",e,line_end,mid,clrWhite,
       lt+label+" mid "+DoubleToString(mid,_Digits));
-   DrawDottedLevel(line_base+"_L",e,line_end,lo,InpBoxColor,
+   DrawDottedLevel(line_base+"_L",e,line_end,lo,box_color,
       lt+label+" low "+DoubleToString(lo,_Digits));
    return n+3;
 }
@@ -316,12 +319,12 @@ void RenderBoxes()
          const string ybase=IntegerToString(YMD(cy,cm,cd));
          const datetime line_end=s1+(datetime)(4*Range_minutes*60);
          created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,"range",
-                                   s1,e1,line_end);
+                                   InpBoxColor,s1,e1,line_end);
          const datetime in_s=NyTimeChart(cy,cm,cd,g_in_hour,g_in_minute);
          const datetime in_e=in_s+(datetime)(Inside_minutes*60);
          if(in_e<=now_server && in_s>=s1 && in_e<=e1)
             created+=DrawRangeObjects(g_prefix+ybase+"_IN",g_prefix+"Y"+ybase+"_IN","inside",
-                                      in_s,in_e,line_end);
+                                      InpInsideColor,in_s,in_e,line_end);
       }
       dt.day+=1;
       cursor=StructToTime(dt);
