@@ -170,6 +170,24 @@ int ComputeServerOffset()
 }
 
 //+------------------------------------------------------------------+
+//| Blend fg toward bg by alpha (0..255) avoiding ARGB byte-order    |
+//+------------------------------------------------------------------+
+color BlendBoxColor(const color fg,const long bg,int alpha)
+{
+   const int a=(alpha<0 ? 0 : (alpha>255 ? 255 : alpha));
+   const int inv=255-a;
+   const int fr=(int)(fg&0xFF);
+   const int fg_=(int)((fg>>8)&0xFF);
+   const int fb=(int)((fg>>16)&0xFF);
+   const int br=(int)(bg&0xFF);
+   const int bg_=(int)((bg>>8)&0xFF);
+   const int bb=(int)((bg>>16)&0xFF);
+   return (color)((((fr*a+br*inv)/255))|
+                  (((fg_*a+bg_*inv)/255)<<8)|
+                  (((fb*a+bb*inv)/255)<<16));
+}
+
+//+------------------------------------------------------------------+
 //| Render the blue next-candle boxes for all visible NY days        |
 //+------------------------------------------------------------------+
 void RenderBoxes()
@@ -222,7 +240,10 @@ void RenderBoxes()
                const string name=g_prefix+IntegerToString(YMD(cy,cm,cd));
                if(ObjectCreate(0,name,OBJ_RECTANGLE,0,s1,lo,e1,hi))
                {
-                  ObjectSetInteger(0,name,OBJPROP_COLOR,ColorToARGB(InpBoxColor,(uchar)InpBoxOpacity));
+                  const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
+                  const color fill=BlendBoxColor(InpBoxColor,chart_bg,InpBoxOpacity);
+                  ObjectSetInteger(0,name,OBJPROP_COLOR,InpBoxColor);
+                  ObjectSetInteger(0,name,OBJPROP_BGCOLOR,fill);
                   ObjectSetInteger(0,name,OBJPROP_FILL,true);
                   ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_SOLID);
                   ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
