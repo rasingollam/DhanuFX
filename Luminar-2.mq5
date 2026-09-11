@@ -451,7 +451,7 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
       if(!ObjectCreate(0,name,OBJ_RECTANGLE,0,profile_start,low+i*bin_size,
                        profile_start+width,low+(i+1)*bin_size))
          continue;
-      ObjectSetInteger(0,name,OBJPROP_COLOR,ColorToARGB(clrSteelBlue,90));
+      ObjectSetInteger(0,name,OBJPROP_COLOR,ColorToARGB(clrSteelBlue,128));
       ObjectSetInteger(0,name,OBJPROP_FILL,true);
       ObjectSetInteger(0,name,OBJPROP_BACK,true);
       ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
