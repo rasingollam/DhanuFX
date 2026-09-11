@@ -1,27 +1,44 @@
 //+------------------------------------------------------------------+
 //|                                                      Luminar-3.mq5 |
-//|                                                                  |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026"
 #property link      ""
-#property version   "1.00"
+#property version   "1.01"
 #property strict
 
-input string Range_start_time="09:00";      // First range start (NY time HH:MM)
-input int    Range_minutes   =90;           // Range length (minutes)
-input string Inside_start_time="09:30";     // Inside range start (NY time HH:MM)
-input int    Inside_minutes   =15;          // Inside range length (minutes)
-input color  InpBoxColor        =clrDodgerBlue; // Next-candle box color
-input color  InpInsideColor     =clrPurple;    // Inside range box color
-input int    InpBoxOpacity      =115;       // Box opacity (0..255)
-input int    InpMinM1Bars       =30;        // Min M1 bars to accept a window
-input double Server_GMT_offset  =-999;      // Broker GMT offset in hours (e.g. 2, 3, 5.5); -999 = auto via TimeGMT()
+//--- Range 1
+input string R1_start         ="09:00";   // Range 1 start (NY HH:MM)
+input int    R1_mins          =90;        // Range 1 length (minutes)
+input string R1_inside_start  ="09:30";   // Range 1 inside start (NY HH:MM)
+input int    R1_inside_mins   =15;        // Range 1 inside length (minutes)
+input color  R1_color         =clrDodgerBlue;  // Range 1 box color
+input color  R1_inside_color  =clrPurple;      // Range 1 inside box color
+
+//--- Range 2
+input string R2_start         ="01:30";   // Range 2 start (NY HH:MM)
+input int    R2_mins          =90;        // Range 2 length (minutes)
+input string R2_inside_start  ="03:00";   // Range 2 inside start (NY HH:MM)
+input int    R2_inside_mins   =15;        // Range 2 inside length (minutes)
+input color  R2_color         =clrGold;       // Range 2 box color
+input color  R2_inside_color  =clrOrangeRed;  // Range 2 inside box color
+
+//--- Range 3
+input string R3_start         ="21:00";   // Range 3 start (NY HH:MM)
+input int    R3_mins          =90;        // Range 3 length (minutes)
+input string R3_inside_start  ="21:00";   // Range 3 inside start (NY HH:MM)
+input int    R3_inside_mins   =15;        // Range 3 inside length (minutes)
+input color  R3_color         =clrLime;       // Range 3 box color
+input color  R3_inside_color  =clrAqua;       // Range 3 inside box color
+
+//--- Common
+input int    InpBoxOpacity      =115;     // Box opacity (0..255)
+input int    InpMinM1Bars       =30;      // Min M1 bars to accept a window
+input double Server_GMT_offset  =-999;    // Broker GMT offset hours (-999 = auto)
 
 string g_prefix;
-int    g_hour=9;
-int    g_minute=0;
-int    g_in_hour=9;
-int    g_in_minute=30;
+int    g_r1_h,g_r1_m,g_r1_ih,g_r1_im;
+int    g_r2_h,g_r2_m,g_r2_ih,g_r2_im;
+int    g_r3_h,g_r3_m,g_r3_ih,g_r3_im;
 int    g_server_offset=0;
 bool   g_offset_ready=false;
 datetime g_last_render=0;
@@ -45,14 +62,6 @@ bool ParseTimeStr(const string s,int &hh,int &mm)
 }
 
 //+------------------------------------------------------------------+
-//| Parse "HH:MM" input                                              |
-//+------------------------------------------------------------------+
-bool ParseSessionTime()
-{
-   return ParseTimeStr(Range_start_time,g_hour,g_minute);
-}
-
-//+------------------------------------------------------------------+
 //| UTC midnight for a calendar date                                 |
 //+------------------------------------------------------------------+
 datetime UtcMidnight(const int y,const int m,const int d)
@@ -68,7 +77,7 @@ datetime UtcMidnight(const int y,const int m,const int d)
 }
 
 //+------------------------------------------------------------------+
-//| YYYYMMDD integer for a date                                      |
+//| YYYYMMDD integer                                                 |
 //+------------------------------------------------------------------+
 int YMD(const int y,const int m,const int d)
 {
@@ -76,7 +85,7 @@ int YMD(const int y,const int m,const int d)
 }
 
 //+------------------------------------------------------------------+
-//| Second Sunday of March / first Sunday of November (US DST)       |
+//| US DST: second Sunday March / first Sunday November               |
 //+------------------------------------------------------------------+
 datetime DSTStart(const int year)
 {
@@ -94,9 +103,6 @@ datetime DSTEnd(const int year)
    return nov1+(datetime)(((7-dt.day_of_week)%7)*86400);
 }
 
-//+------------------------------------------------------------------+
-//| US Daylight Saving active for a local NT date?                   |
-//+------------------------------------------------------------------+
 bool IsDaylightSaving(const int y,const int m,const int d)
 {
    const datetime t=UtcMidnight(y,m,d);
@@ -139,14 +145,6 @@ datetime NyTimeChart(const int y,const int m,const int d,const int hh,const int 
 }
 
 //+------------------------------------------------------------------+
-//| Chart time of NY session start on a given NY date                |
-//+------------------------------------------------------------------+
-datetime NySessionStartChart(const int y,const int m,const int d)
-{
-   return NyTimeChart(y,m,d,g_hour,g_minute);
-}
-
-//+------------------------------------------------------------------+
 //| Visible chart time range                                         |
 //+------------------------------------------------------------------+
 bool GetVisibleRange(datetime &vstart,datetime &vend)
@@ -177,7 +175,7 @@ bool GetVisibleRange(datetime &vstart,datetime &vend)
 }
 
 //+------------------------------------------------------------------+
-//| Broker GMT offset in seconds (input overrides auto-detect)       |
+//| Broker GMT offset in seconds                                    |
 //+------------------------------------------------------------------+
 int ComputeServerOffset()
 {
@@ -191,7 +189,7 @@ int ComputeServerOffset()
 }
 
 //+------------------------------------------------------------------+
-//| Blend fg toward bg by alpha (0..255) avoiding ARGB byte-order    |
+//| Blend fg toward bg by alpha avoiding ARGB byte-order issue       |
 //+------------------------------------------------------------------+
 color BlendBoxColor(const color fg,const long bg,int alpha)
 {
@@ -281,7 +279,34 @@ int DrawRangeObjects(const string box_name,const string line_base,const string l
 }
 
 //+------------------------------------------------------------------+
-//| Render the blue next-candle boxes for all visible NY days        |
+//| Draw one range + its inside range for a given NY date            |
+//+------------------------------------------------------------------+
+void DrawRangePair(const int cy,const int cm,const int cd,
+                   const int rh,const int rm,const int r_mins,
+                   const int ih,const int im,const int i_mins,
+                   const color rc,const color ric,
+                   const datetime now_server,
+                   const datetime vstart,const datetime vend,
+                   int &created)
+{
+   const datetime rs=NyTimeChart(cy,cm,cd,rh,rm);
+   const datetime re=rs+(datetime)(r_mins*60);
+   if(re>now_server || re<vstart || rs>=vend)
+      return;
+   const string tag=IntegerToString(rh)+StringFormat("%02d",rm);
+   const string ybase=IntegerToString(YMD(cy,cm,cd))+"_"+tag;
+   const datetime line_end=rs+(datetime)(4*r_mins*60);
+   created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,tag,
+                             rc,clrWhite,rs,re,line_end);
+   const datetime is_=NyTimeChart(cy,cm,cd,ih,im);
+   const datetime ie_=is_+(datetime)(i_mins*60);
+   if(ie_<=now_server && is_>=rs && ie_<=re)
+      created+=DrawRangeObjects(g_prefix+ybase+"_IN",g_prefix+"Y"+ybase+"_IN",tag+"IN",
+                                ric,clrOrange,is_,ie_,line_end);
+}
+
+//+------------------------------------------------------------------+
+//| Render all range boxes for all visible NY days                   |
 //+------------------------------------------------------------------+
 void RenderBoxes()
 {
@@ -310,35 +335,24 @@ void RenderBoxes()
       const int cy=dt.year;
       const int cm=dt.mon;
       const int cd=dt.day;
-      const datetime s1=NySessionStartChart(cy,cm,cd);
-      if(s1>vend+86400)
+      const datetime earliest=NyTimeChart(cy,cm,cd,0,0);
+      if(earliest>vend+86400)
          break;
-      const datetime e1=s1+(datetime)(Range_minutes*60);
-      if(e1<=now_server && e1>=vstart && s1<vend)
-      {
-         const string ybase=IntegerToString(YMD(cy,cm,cd));
-         const datetime line_end=s1+(datetime)(4*Range_minutes*60);
-         created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,"range",
-                                   InpBoxColor,clrWhite,s1,e1,line_end);
-         const datetime in_s=NyTimeChart(cy,cm,cd,g_in_hour,g_in_minute);
-         const datetime in_e=in_s+(datetime)(Inside_minutes*60);
-         if(in_e<=now_server && in_s>=s1 && in_e<=e1)
-            created+=DrawRangeObjects(g_prefix+ybase+"_IN",g_prefix+"Y"+ybase+"_IN","inside",
-                                      InpInsideColor,clrOrange,in_s,in_e,line_end);
-      }
+      DrawRangePair(cy,cm,cd,g_r1_h,g_r1_m,R1_mins,g_r1_ih,g_r1_im,R1_inside_mins,
+                    R1_color,R1_inside_color,now_server,vstart,vend,created);
+      DrawRangePair(cy,cm,cd,g_r2_h,g_r2_m,R2_mins,g_r2_ih,g_r2_im,R2_inside_mins,
+                    R2_color,R2_inside_color,now_server,vstart,vend,created);
+      DrawRangePair(cy,cm,cd,g_r3_h,g_r3_m,R3_mins,g_r3_ih,g_r3_im,R3_inside_mins,
+                    R3_color,R3_inside_color,now_server,vstart,vend,created);
       dt.day+=1;
       cursor=StructToTime(dt);
    }
    if(g_last_range_key!=range_key)
    {
       g_last_range_key=range_key;
-      int ty=0,tm=0,td=0;
-      NyDateOf(TimeTradeServer(),ty,tm,td);
-      Print("Luminar3 range ",TimeToString(vstart,TIME_DATE|TIME_MINUTES),"..",
+      Print("Luminar3 ",TimeToString(vstart,TIME_DATE|TIME_MINUTES),"..",
             TimeToString(vend,TIME_DATE|TIME_MINUTES),
-            " | offset ",g_server_offset,"s | today NY start (chart) ",
-            TimeToString(NySessionStartChart(ty,tm,td),TIME_DATE|TIME_MINUTES),
-            " | objects ",created);
+            " | offset ",g_server_offset,"s | objects ",created);
    }
    ChartRedraw(0);
 }
@@ -349,30 +363,30 @@ void RenderBoxes()
 int OnInit()
 {
    g_prefix="Luminar3_"+_Symbol+"_";
-   if(!ParseSessionTime())
-   {
-      Print("Invalid Range_start_time input. Expected HH:MM");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   if(!ParseTimeStr(Inside_start_time,g_in_hour,g_in_minute))
-   {
-      Print("Invalid Inside_start_time input. Expected HH:MM");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-   if(Range_minutes<1 || Range_minutes>1440)
-      return INIT_PARAMETERS_INCORRECT;
-   if(Inside_minutes<1 || Inside_minutes>1440)
-      return INIT_PARAMETERS_INCORRECT;
+   if(!ParseTimeStr(R1_start,g_r1_h,g_r1_m))
+   { Print("Invalid R1_start"); return INIT_PARAMETERS_INCORRECT; }
+   if(!ParseTimeStr(R1_inside_start,g_r1_ih,g_r1_im))
+   { Print("Invalid R1_inside_start"); return INIT_PARAMETERS_INCORRECT; }
+   if(!ParseTimeStr(R2_start,g_r2_h,g_r2_m))
+   { Print("Invalid R2_start"); return INIT_PARAMETERS_INCORRECT; }
+   if(!ParseTimeStr(R2_inside_start,g_r2_ih,g_r2_im))
+   { Print("Invalid R2_inside_start"); return INIT_PARAMETERS_INCORRECT; }
+   if(!ParseTimeStr(R3_start,g_r3_h,g_r3_m))
+   { Print("Invalid R3_start"); return INIT_PARAMETERS_INCORRECT; }
+   if(!ParseTimeStr(R3_inside_start,g_r3_ih,g_r3_im))
+   { Print("Invalid R3_inside_start"); return INIT_PARAMETERS_INCORRECT; }
+   if(R1_mins<1||R1_mins>1440||R2_mins<1||R2_mins>1440||R3_mins<1||R3_mins>1440)
+   { Print("Range minutes must be 1..1440"); return INIT_PARAMETERS_INCORRECT; }
+   if(R1_inside_mins<1||R1_inside_mins>1440||R2_inside_mins<1||R2_inside_mins>1440||R3_inside_mins<1||R3_inside_mins>1440)
+   { Print("Inside minutes must be 1..1440"); return INIT_PARAMETERS_INCORRECT; }
    if(InpMinM1Bars<1)
       return INIT_PARAMETERS_INCORRECT;
    if(Server_GMT_offset!=-999 && (Server_GMT_offset<-12.0 || Server_GMT_offset>14.0))
-   {
-      Print("Invalid Server_GMT_offset. Use -999 for auto or realistic hours (-12..14).");
-      return INIT_PARAMETERS_INCORRECT;
-   }
+   { Print("Invalid Server_GMT_offset"); return INIT_PARAMETERS_INCORRECT; }
    RenderBoxes();
    return(INIT_SUCCEEDED);
 }
+
 //+------------------------------------------------------------------+
 //| Expert deinitialization function                                 |
 //+------------------------------------------------------------------+
@@ -381,6 +395,7 @@ void OnDeinit(const int reason)
    ObjectsDeleteAll(0,g_prefix,0);
    ChartRedraw(0);
 }
+
 //+------------------------------------------------------------------+
 //| Expert tick function                                             |
 //+------------------------------------------------------------------+
@@ -392,6 +407,7 @@ void OnTick()
       RenderBoxes();
    }
 }
+
 //+------------------------------------------------------------------+
 //| Chart events                                                     |
 //+------------------------------------------------------------------+
