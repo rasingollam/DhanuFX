@@ -235,15 +235,15 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                              style = label.style_none, size = size.small)
                     // POC / VAH / VAL word labels centered inside their own bin
                     if q == poc
-                        label.new(rs - wq / 2, (blo + bhi) / 2, "POC",
+                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "POC",
                              xloc = xloc.bar_time, color = na, textcolor = i_pocc,
                              style = label.style_none, size = size.small)
                     if q == va_hi
-                        label.new(rs - wq / 2, (blo + bhi) / 2, "VAH",
+                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "VAH",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
                              style = label.style_none, size = size.small)
                     if q == va_lo
-                        label.new(rs - wq / 2, (blo + bhi) / 2, "VAL",
+                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "VAL",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
                              style = label.style_none, size = size.small)
         // ---- buy / sell / delta spread across range top ----
