@@ -12,6 +12,7 @@ input int    Session_minutes    =90;        // Session candle length (minutes)
 input color  InpBoxColor        =clrDodgerBlue; // Next-candle box color
 input int    InpBoxOpacity      =115;       // Box opacity (0..255)
 input int    InpMinM1Bars       =30;        // Min M1 bars to accept a window
+input double Server_GMT_offset  =-999;      // Broker GMT offset in hours (e.g. 2, 3, 5.5); -999 = auto via TimeGMT()
 
 string g_prefix;
 int    g_hour=9;
@@ -155,21 +156,30 @@ bool GetVisibleRange(datetime &vstart,datetime &vend)
 }
 
 //+------------------------------------------------------------------+
+//| Broker GMT offset in seconds (input overrides auto-detect)       |
+//+------------------------------------------------------------------+
+int ComputeServerOffset()
+{
+   if(Server_GMT_offset!=-999)
+      return (int)MathRound(Server_GMT_offset*3600.0);
+   const datetime srv=TimeTradeServer();
+   const datetime gmt=TimeGMT();
+   if(srv<=0 || gmt<=0)
+      return 0;
+   return (int)(srv-gmt);
+}
+
+//+------------------------------------------------------------------+
 //| Render the blue next-candle boxes for all visible NY days        |
 //+------------------------------------------------------------------+
 void RenderBoxes()
 {
    if(!g_offset_ready)
    {
-      const datetime srv=TimeTradeServer();
-      const datetime gmt=TimeGMT();
-      if(srv>0 && gmt>0)
-      {
-         g_server_offset=(int)(srv-gmt);
-         g_offset_ready=true;
-      }
+      g_server_offset=ComputeServerOffset();
+      g_offset_ready=true;
    }
-   if(!g_offset_ready)
+   if(g_server_offset==0 && !g_offset_ready)
       return;
    datetime vstart=0;
    datetime vend=0;
@@ -216,7 +226,7 @@ void RenderBoxes()
                   ObjectSetInteger(0,name,OBJPROP_FILL,true);
                   ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_SOLID);
                   ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
-                  ObjectSetInteger(0,name,OBJPROP_BACK,true);
+                  ObjectSetInteger(0,name,OBJPROP_BACK,false);
                   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
                   ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
                   ObjectSetString(0,name,OBJPROP_TOOLTIP,
@@ -236,9 +246,13 @@ void RenderBoxes()
    if(g_last_range_key!=range_key)
    {
       g_last_range_key=range_key;
+      int ty=0,tm=0,td=0;
+      NyDateOf(TimeTradeServer(),ty,tm,td);
       Print("Luminar3 range ",TimeToString(vstart,TIME_DATE|TIME_MINUTES),"..",
-            TimeToString(vend,TIME_DATE|TIME_MINUTES)," | offset ",g_server_offset,
-            "s | boxes ",created);
+            TimeToString(vend,TIME_DATE|TIME_MINUTES),
+            " | offset ",g_server_offset,"s | today NY start (chart) ",
+            TimeToString(NySessionStartChart(ty,tm,td),TIME_DATE|TIME_MINUTES),
+            " | boxes ",created);
    }
    ChartRedraw(0);
 }
@@ -258,6 +272,11 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    if(InpMinM1Bars<1)
       return INIT_PARAMETERS_INCORRECT;
+   if(Server_GMT_offset!=-999 && (Server_GMT_offset<-12.0 || Server_GMT_offset>14.0))
+   {
+      Print("Invalid Server_GMT_offset. Use -999 for auto or realistic hours (-12..14).");
+      return INIT_PARAMETERS_INCORRECT;
+   }
    RenderBoxes();
    return(INIT_SUCCEEDED);
 }
