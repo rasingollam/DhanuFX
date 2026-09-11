@@ -86,7 +86,7 @@ f_nyDateKey(t) =>
     na(t) ? -1 : year(t, "America/New_York") * 10000 + month(t, "America/New_York") * 100 + dayofmonth(t, "America/New_York")
 
 f_fontSize() =>
-    size s = size.small
+    string s = size.small
     if i_vpfs == "tiny"
         s := size.tiny
     else if i_vpfs == "normal"
