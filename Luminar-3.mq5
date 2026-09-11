@@ -479,8 +479,8 @@ int DrawBuySellVolume(const string base,const datetime rs,const datetime re)
    const long   bv=(long)MathRound(buy);
    const long   sv=(long)MathRound(sell);
    const double diff=buy-sell;
-   const string buyTxt ="Buy "+IntegerToString(bv);
-   const string sellTxt="Sell "+IntegerToString(sv);
+   const string buyTxt =IntegerToString(bv);
+   const string sellTxt=IntegerToString(sv);
    const string diffTxt="Delta "+IntegerToString((long)MathRound(MathAbs(diff)));
    const int maxLen=MathMax(StringLen(buyTxt),MathMax(StringLen(sellTxt),StringLen(diffTxt)));
    const double char_px_pt=0.55*96.0/72.0;
