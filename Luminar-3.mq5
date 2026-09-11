@@ -210,6 +210,7 @@ void RenderBoxes()
    NyDateOf(vstart,y,m,d);
    datetime cursor=UtcMidnight(y,m,d);
    int created=0;
+   string box_log="";
    for(int i=0;i<60;i++)
    {
       MqlDateTime dt;
@@ -235,6 +236,11 @@ void RenderBoxes()
                hi=MathMax(hi,bars[b].high);
                lo=MathMin(lo,bars[b].low);
             }
+            box_log+=StringFormat("  box %s..%s win %s..%s bars %d high %.2f low %.2f\n",
+               TimeToString(s1,TIME_DATE|TIME_MINUTES),
+               TimeToString(e1,TIME_DATE|TIME_MINUTES),
+               TimeToString(e1,TIME_DATE|TIME_MINUTES),
+               TimeToString(e2,TIME_DATE|TIME_MINUTES),copied,hi,lo);
             if(hi>lo)
             {
                const string name=g_prefix+IntegerToString(YMD(cy,cm,cd));
@@ -274,6 +280,10 @@ void RenderBoxes()
             " | offset ",g_server_offset,"s | today NY start (chart) ",
             TimeToString(NySessionStartChart(ty,tm,td),TIME_DATE|TIME_MINUTES),
             " | boxes ",created);
+      if(box_log!="")
+      {
+         Print(box_log);
+      }
    }
    ChartRedraw(0);
 }
