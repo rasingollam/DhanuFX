@@ -231,7 +231,7 @@ void DrawDottedLevel(const string name,const datetime t1,const datetime t2,
 //| Draw a range box plus its extended high/mid/low dotted lines     |
 //+------------------------------------------------------------------+
 int DrawRangeObjects(const string box_name,const string line_base,const string label,
-                     const color box_color,
+                     const color box_color,const color mid_color,
                      const datetime s,const datetime e,const datetime line_end)
 {
    MqlRates bars[];
@@ -273,7 +273,7 @@ int DrawRangeObjects(const string box_name,const string line_base,const string l
                    TimeToString(line_end,TIME_DATE|TIME_MINUTES)+" | ";
    DrawDottedLevel(line_base+"_H",e,line_end,hi,box_color,
       lt+label+" high "+DoubleToString(hi,_Digits));
-   DrawDottedLevel(line_base+"_M",e,line_end,mid,clrWhite,
+   DrawDottedLevel(line_base+"_M",e,line_end,mid,mid_color,
       lt+label+" mid "+DoubleToString(mid,_Digits));
    DrawDottedLevel(line_base+"_L",e,line_end,lo,box_color,
       lt+label+" low "+DoubleToString(lo,_Digits));
@@ -319,12 +319,12 @@ void RenderBoxes()
          const string ybase=IntegerToString(YMD(cy,cm,cd));
          const datetime line_end=s1+(datetime)(4*Range_minutes*60);
          created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,"range",
-                                   InpBoxColor,s1,e1,line_end);
+                                   InpBoxColor,clrWhite,s1,e1,line_end);
          const datetime in_s=NyTimeChart(cy,cm,cd,g_in_hour,g_in_minute);
          const datetime in_e=in_s+(datetime)(Inside_minutes*60);
          if(in_e<=now_server && in_s>=s1 && in_e<=e1)
             created+=DrawRangeObjects(g_prefix+ybase+"_IN",g_prefix+"Y"+ybase+"_IN","inside",
-                                      InpInsideColor,in_s,in_e,line_end);
+                                      InpInsideColor,clrOrange,in_s,in_e,line_end);
       }
       dt.day+=1;
       cursor=StructToTime(dt);
