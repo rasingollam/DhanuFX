@@ -9,7 +9,10 @@
 
 input string Range_start_time="09:00";      // First range start (NY time HH:MM)
 input int    Range_minutes   =90;           // Range length (minutes)
+input string Inside_start_time="09:30";     // Inside range start (NY time HH:MM)
+input int    Inside_minutes   =15;          // Inside range length (minutes)
 input color  InpBoxColor        =clrDodgerBlue; // Next-candle box color
+input color  InpInsideColor     =clrPurple;    // Inside range box color
 input int    InpBoxOpacity      =115;       // Box opacity (0..255)
 input int    InpMinM1Bars       =30;        // Min M1 bars to accept a window
 input double Server_GMT_offset  =-999;      // Broker GMT offset in hours (e.g. 2, 3, 5.5); -999 = auto via TimeGMT()
@@ -17,26 +20,36 @@ input double Server_GMT_offset  =-999;      // Broker GMT offset in hours (e.g. 
 string g_prefix;
 int    g_hour=9;
 int    g_minute=0;
+int    g_in_hour=9;
+int    g_in_minute=30;
 int    g_server_offset=0;
 bool   g_offset_ready=false;
 datetime g_last_render=0;
 long   g_last_range_key=0;
 
 //+------------------------------------------------------------------+
+//| Parse "HH:MM" string into hours/minutes                          |
+//+------------------------------------------------------------------+
+bool ParseTimeStr(const string s,int &hh,int &mm)
+{
+   string parts[];
+   if(StringSplit(s,':',parts)!=2)
+      return false;
+   const int h=(int)StringToInteger(parts[0]);
+   const int m=(int)StringToInteger(parts[1]);
+   if(h<0 || h>23 || m<0 || m>59)
+      return false;
+   hh=h;
+   mm=m;
+   return true;
+}
+
+//+------------------------------------------------------------------+
 //| Parse "HH:MM" input                                              |
 //+------------------------------------------------------------------+
 bool ParseSessionTime()
 {
-   string parts[];
-   if(StringSplit(Range_start_time,':',parts)!=2)
-      return false;
-   int h=(int)StringToInteger(parts[0]);
-   int m=(int)StringToInteger(parts[1]);
-   if(h<0 || h>23 || m<0 || m>59)
-      return false;
-   g_hour=h;
-   g_minute=m;
-   return true;
+   return ParseTimeStr(Range_start_time,g_hour,g_minute);
 }
 
 //+------------------------------------------------------------------+
@@ -115,14 +128,22 @@ void NyDateOf(const datetime t,int &y,int &m,int &d)
 }
 
 //+------------------------------------------------------------------+
+//| Chart time of an arbitrary NY time-of-day on a given NY date     |
+//+------------------------------------------------------------------+
+datetime NyTimeChart(const int y,const int m,const int d,const int hh,const int mm)
+{
+   const int off=(IsDaylightSaving(y,m,d) ? 4 : 5);
+   const datetime gmt=UtcMidnight(y,m,d)+(datetime)(off*3600)
+                     +(datetime)(hh*3600+mm*60);
+   return gmt+g_server_offset;
+}
+
+//+------------------------------------------------------------------+
 //| Chart time of NY session start on a given NY date                |
 //+------------------------------------------------------------------+
 datetime NySessionStartChart(const int y,const int m,const int d)
 {
-   const int off=(IsDaylightSaving(y,m,d) ? 4 : 5);
-   const datetime gmt=UtcMidnight(y,m,d)+(datetime)(off*3600)
-                     +(datetime)(g_hour*3600+g_minute*60);
-   return gmt+g_server_offset;
+   return NyTimeChart(y,m,d,g_hour,g_minute);
 }
 
 //+------------------------------------------------------------------+
@@ -207,6 +228,56 @@ void DrawDottedLevel(const string name,const datetime t1,const datetime t2,
 }
 
 //+------------------------------------------------------------------+
+//| Draw a range box plus its extended high/mid/low dotted lines     |
+//+------------------------------------------------------------------+
+int DrawRangeObjects(const string box_name,const string line_base,const string label,
+                     const datetime s,const datetime e,const datetime line_end)
+{
+   MqlRates bars[];
+   const int copied=CopyRates(_Symbol,PERIOD_M1,s,e-1,bars);
+   if(copied<InpMinM1Bars)
+      return 0;
+   double hi=-1.0e100;
+   double lo=1.0e100;
+   for(int b=0;b<copied;b++)
+   {
+      hi=MathMax(hi,bars[b].high);
+      lo=MathMin(lo,bars[b].low);
+   }
+   if(hi<=lo)
+      return 0;
+   int n=0;
+   if(ObjectCreate(0,box_name,OBJ_RECTANGLE,0,s,lo,e,hi))
+   {
+      const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
+      const color fill=BlendBoxColor(InpBoxColor,chart_bg,InpBoxOpacity);
+      ObjectSetInteger(0,box_name,OBJPROP_COLOR,InpBoxColor);
+      ObjectSetInteger(0,box_name,OBJPROP_BGCOLOR,fill);
+      ObjectSetInteger(0,box_name,OBJPROP_FILL,true);
+      ObjectSetInteger(0,box_name,OBJPROP_STYLE,STYLE_SOLID);
+      ObjectSetInteger(0,box_name,OBJPROP_WIDTH,1);
+      ObjectSetInteger(0,box_name,OBJPROP_BACK,false);
+      ObjectSetInteger(0,box_name,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,box_name,OBJPROP_HIDDEN,false);
+      ObjectSetString(0,box_name,OBJPROP_TOOLTIP,
+         label+" "+TimeToString(s,TIME_DATE|TIME_MINUTES)+".."+
+         TimeToString(e,TIME_DATE|TIME_MINUTES)+" | high "+
+         DoubleToString(hi,_Digits)+" low "+DoubleToString(lo,_Digits));
+      n++;
+   }
+   const double mid=(hi+lo)/2.0;
+   const string lt=TimeToString(e,TIME_DATE|TIME_MINUTES)+".."+
+                   TimeToString(line_end,TIME_DATE|TIME_MINUTES)+" | ";
+   DrawDottedLevel(line_base+"_H",e,line_end,hi,InpBoxColor,
+      lt+label+" high "+DoubleToString(hi,_Digits));
+   DrawDottedLevel(line_base+"_M",e,line_end,mid,clrWhite,
+      lt+label+" mid "+DoubleToString(mid,_Digits));
+   DrawDottedLevel(line_base+"_L",e,line_end,lo,InpBoxColor,
+      lt+label+" low "+DoubleToString(lo,_Digits));
+   return n+3;
+}
+
+//+------------------------------------------------------------------+
 //| Render the blue next-candle boxes for all visible NY days        |
 //+------------------------------------------------------------------+
 void RenderBoxes()
@@ -229,7 +300,6 @@ void RenderBoxes()
    NyDateOf(vstart,y,m,d);
    datetime cursor=UtcMidnight(y,m,d);
    int created=0;
-   string box_log="";
    for(int i=0;i<60;i++)
    {
       MqlDateTime dt;
@@ -241,62 +311,17 @@ void RenderBoxes()
       if(s1>vend+86400)
          break;
       const datetime e1=s1+(datetime)(Range_minutes*60);
-      const datetime e2=e1+(datetime)(Range_minutes*60);
-      const datetime e3=e2+(datetime)(Range_minutes*60);
-      const datetime e4=e3+(datetime)(Range_minutes*60);
       if(e1<=now_server && e1>=vstart && s1<vend)
       {
-         MqlRates bars[];
-         const int copied=CopyRates(_Symbol,PERIOD_M1,s1,e1-1,bars);
-         if(copied>=InpMinM1Bars)
-         {
-            double hi=-1.0e100;
-            double lo=1.0e100;
-            for(int b=0;b<copied;b++)
-            {
-               hi=MathMax(hi,bars[b].high);
-               lo=MathMin(lo,bars[b].low);
-            }
-            box_log+=StringFormat("  box %s..%s win %s..%s bars %d high %.2f low %.2f\n",
-               TimeToString(s1,TIME_DATE|TIME_MINUTES),
-               TimeToString(e1,TIME_DATE|TIME_MINUTES),
-               TimeToString(s1,TIME_DATE|TIME_MINUTES),
-               TimeToString(e1,TIME_DATE|TIME_MINUTES),copied,hi,lo);
-            if(hi>lo)
-            {
-               const string name=g_prefix+IntegerToString(YMD(cy,cm,cd));
-               if(ObjectCreate(0,name,OBJ_RECTANGLE,0,s1,lo,e1,hi))
-               {
-                  const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
-                  const color fill=BlendBoxColor(InpBoxColor,chart_bg,InpBoxOpacity);
-                  ObjectSetInteger(0,name,OBJPROP_COLOR,InpBoxColor);
-                  ObjectSetInteger(0,name,OBJPROP_BGCOLOR,fill);
-                  ObjectSetInteger(0,name,OBJPROP_FILL,true);
-                  ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_SOLID);
-                  ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
-                  ObjectSetInteger(0,name,OBJPROP_BACK,false);
-                  ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-                  ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
-                  ObjectSetString(0,name,OBJPROP_TOOLTIP,
-                     TimeToString(s1,TIME_DATE|TIME_MINUTES)+".."+
-                     TimeToString(e1,TIME_DATE|TIME_MINUTES)+" | range high "+
-                     DoubleToString(hi,_Digits)+" low "+DoubleToString(lo,_Digits));
-                  created++;
-                  const string lbase=g_prefix+"Y"+IntegerToString(YMD(cy,cm,cd));
-                  const datetime lstart=e1;
-                  const datetime lend=s1+(datetime)(4*Range_minutes*60);
-                  const string ltimes=TimeToString(lstart,TIME_DATE|TIME_MINUTES)+".."+
-                                      TimeToString(lend,TIME_DATE|TIME_MINUTES)+" | ";
-                  DrawDottedLevel(lbase+"_H",lstart,lend,hi,InpBoxColor,
-                     ltimes+"box high "+DoubleToString(hi,_Digits));
-                  DrawDottedLevel(lbase+"_M",lstart,lend,(hi+lo)/2.0,clrWhite,
-                     ltimes+"box mid "+DoubleToString((hi+lo)/2.0,_Digits));
-                  DrawDottedLevel(lbase+"_L",lstart,lend,lo,InpBoxColor,
-                     ltimes+"box low "+DoubleToString(lo,_Digits));
-                  created+=3;
-               }
-            }
-         }
+         const string ybase=IntegerToString(YMD(cy,cm,cd));
+         const datetime line_end=s1+(datetime)(4*Range_minutes*60);
+         created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,"range",
+                                   s1,e1,line_end);
+         const datetime in_s=NyTimeChart(cy,cm,cd,g_in_hour,g_in_minute);
+         const datetime in_e=in_s+(datetime)(Inside_minutes*60);
+         if(in_e<=now_server && in_s>=s1 && in_e<=e1)
+            created+=DrawRangeObjects(g_prefix+ybase+"_IN",g_prefix+"Y"+ybase+"_IN","inside",
+                                      in_s,in_e,line_end);
       }
       dt.day+=1;
       cursor=StructToTime(dt);
@@ -310,11 +335,7 @@ void RenderBoxes()
             TimeToString(vend,TIME_DATE|TIME_MINUTES),
             " | offset ",g_server_offset,"s | today NY start (chart) ",
             TimeToString(NySessionStartChart(ty,tm,td),TIME_DATE|TIME_MINUTES),
-            " | boxes ",created);
-      if(box_log!="")
-      {
-         Print(box_log);
-      }
+            " | objects ",created);
    }
    ChartRedraw(0);
 }
@@ -330,7 +351,14 @@ int OnInit()
       Print("Invalid Range_start_time input. Expected HH:MM");
       return INIT_PARAMETERS_INCORRECT;
    }
+   if(!ParseTimeStr(Inside_start_time,g_in_hour,g_in_minute))
+   {
+      Print("Invalid Inside_start_time input. Expected HH:MM");
+      return INIT_PARAMETERS_INCORRECT;
+   }
    if(Range_minutes<1 || Range_minutes>1440)
+      return INIT_PARAMETERS_INCORRECT;
+   if(Inside_minutes<1 || Inside_minutes>1440)
       return INIT_PARAMETERS_INCORRECT;
    if(InpMinM1Bars<1)
       return INIT_PARAMETERS_INCORRECT;
