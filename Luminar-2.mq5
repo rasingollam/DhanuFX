@@ -59,6 +59,8 @@ datetime last_profile_session=0;
 datetime next_profile_retry=0;
 datetime backfilled_session=0;
 datetime next_backfill_retry=0;
+bool profile_histogram_visible=false;
+const color profile_histogram_color=C'35,65,90'; // 50%-style SteelBlue blend on a dark chart
 
 void UpdateSignalCounter()
 {
@@ -335,7 +337,8 @@ void DrawDaySeparators(const datetime current_session)
 }
 
 void DrawProfileLevel(const string suffix,const datetime start,const datetime end,const double price,
-                      const double label_price,const color line_color,const int width)
+                      const double label_price,const color line_color,const int width,
+                      const datetime label_time=0)
 {
    const string name=object_prefix+"VP_"+IntegerToString((long)start)+"_"+suffix;
    if(ObjectCreate(0,name,OBJ_TREND,0,start,price,end,price))
@@ -349,7 +352,7 @@ void DrawProfileLevel(const string suffix,const datetime start,const datetime en
       ObjectSetString(0,name,OBJPROP_TOOLTIP,"Previous broker day "+suffix+"  "+DoubleToString(price,_Digits));
    }
    const string label=name+"_Label";
-   if(ObjectCreate(0,label,OBJ_TEXT,0,end,label_price))
+   if(ObjectCreate(0,label,OBJ_TEXT,0,(label_time==0 ? end : label_time),label_price))
    {
       ObjectSetString(0,label,OBJPROP_TEXT," "+suffix+" "+DoubleToString(price,_Digits));
       ObjectSetInteger(0,label,OBJPROP_COLOR,line_color);
@@ -379,6 +382,30 @@ bool FindPreviousBrokerSession(const datetime current_session,datetime &profile_
 void DeleteProfileForSession(const datetime profile_start)
 {
    ObjectsDeleteAll(0,object_prefix+"VP_"+IntegerToString((long)profile_start)+"_");
+}
+
+void UpdateHistogramButton()
+{
+   const string button=object_prefix+"HistogramToggle";
+   ObjectSetString(0,button,OBJPROP_TEXT,(profile_histogram_visible ? "HIDE HISTOGRAM" : "SHOW HISTOGRAM"));
+   ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(profile_histogram_visible ? clrSteelBlue : clrDimGray));
+}
+
+void SetHistogramVisibility(const bool visible)
+{
+   profile_histogram_visible=visible;
+   const string prefix=object_prefix+"VP_";
+   for(int i=ObjectsTotal(0,0,-1)-1;i>=0;i--)
+   {
+      const string name=ObjectName(0,i,0,-1);
+      if(StringFind(name,prefix)==0 && StringFind(name,"_Bin_")>=0)
+      {
+         ObjectSetInteger(0,name,OBJPROP_COLOR,(visible ? profile_histogram_color : clrNONE));
+         ObjectSetInteger(0,name,OBJPROP_TIMEFRAMES,(visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS));
+      }
+   }
+   UpdateHistogramButton();
+   ChartRedraw(0);
 }
 
 bool LoadProfileBars(const datetime profile_start,const datetime profile_end,MqlRates &bars[])
@@ -411,12 +438,12 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
    if(bin_size<=0.0 || high<low)
       return false;
    int bins=(int)MathFloor((high-low)/bin_size)+1;
-   if(bins>500)
+   if(bins>200)
    {
-      bin_size=MathCeil((high-low)/(500.0*_Point))*_Point;
+      bin_size=MathCeil((high-low)/(200.0*_Point))*_Point;
       bins=(int)MathFloor((high-low)/bin_size)+1;
    }
-   if(bins<=0 || bins>500)
+   if(bins<=0 || bins>200)
       return false;
    double volume[];
    if(ArrayResize(volume,bins)!=bins)
@@ -426,16 +453,25 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
    int poc=0;
    for(int i=0;i<ArraySize(bars);i++)
    {
-      const double price=(bars[i].high+bars[i].low+bars[i].close)/3.0;
-      int bin=(int)MathFloor((price-low)/bin_size);
-      if(bin<0) bin=0;
-      if(bin>=bins) bin=bins-1;
-      volume[bin]+=(double)bars[i].tick_volume;
-      total+=(double)bars[i].tick_volume;
+      const double bar_volume=(double)bars[i].tick_volume;
+      if(bar_volume<=0.0)
+         continue;
+      int bin_low=(int)MathFloor((bars[i].low-low)/bin_size);
+      int bin_high=(int)MathFloor((bars[i].high-low)/bin_size);
+      if(bin_low<0) bin_low=0;
+      if(bin_high>bins-1) bin_high=bins-1;
+      if(bin_high<bin_low)
+         bin_high=bin_low;
+      const int covered=bin_high-bin_low+1;
+      const double share=bar_volume/(double)covered;
+      for(int b=bin_low;b<=bin_high;b++)
+         volume[b]+=share;
+      total+=bar_volume;
    }
    if(total<=0.0)
       return false;
    DeleteProfileForSession(profile_start);
+   int histogram_bars=0;
    for(int i=0;i<bins;i++)
    {
       if(volume[i]>maximum)
@@ -466,6 +502,7 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
       }
    }
    const datetime profile_width=(profile_end-profile_start)/3;
+   const datetime histogram_tip=profile_start+(datetime)MathMax(60.0,(double)profile_width);
    for(int i=0;i<bins;i++)
    {
       if(volume[i]<=0.0)
@@ -475,19 +512,23 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
       if(!ObjectCreate(0,name,OBJ_RECTANGLE,0,profile_start,low+i*bin_size,
                        profile_start+width,low+(i+1)*bin_size))
          continue;
-      ObjectSetInteger(0,name,OBJPROP_COLOR,ColorToARGB(clrSteelBlue,128));
+      ObjectSetInteger(0,name,OBJPROP_COLOR,(profile_histogram_visible ? profile_histogram_color : clrNONE));
       ObjectSetInteger(0,name,OBJPROP_FILL,true);
       ObjectSetInteger(0,name,OBJPROP_BACK,false);
+      ObjectSetInteger(0,name,OBJPROP_TIMEFRAMES,(profile_histogram_visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS));
       ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
       ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
+      histogram_bars++;
    }
-   const double label_gap=MathMax(15.0*bin_size,100.0*_Point);
+   const double label_gap=MathMax(2.0*bin_size,30.0*_Point);
    DrawProfileLevel("VAH",profile_start,profile_end,low+(value_high+1)*bin_size,
-                    low+(value_high+1)*bin_size+label_gap,clrDeepSkyBlue,1);
+                    low+(value_high+1)*bin_size+label_gap,clrDeepSkyBlue,1,histogram_tip);
    DrawProfileLevel("POC",profile_start,profile_end,low+(poc+0.5)*bin_size,
-                    low+(poc+0.5)*bin_size,clrGold,2);
+                    low+(poc+0.5)*bin_size,clrGold,2,histogram_tip);
    DrawProfileLevel("VAL",profile_start,profile_end,low+value_low*bin_size,
-                    low+value_low*bin_size-label_gap,clrDeepSkyBlue,1);
+                    low+value_low*bin_size-label_gap,clrDeepSkyBlue,1,histogram_tip);
+   Print("Volume profile rendered | bins ",histogram_bars," | total ",DoubleToString(total,0),
+         " | POC ",DoubleToString(low+(poc+0.5)*bin_size,_Digits));
    return true;
 }
 
@@ -553,6 +594,7 @@ int OnInit()
    next_profile_retry=0;
    backfilled_session=0;
    next_backfill_retry=0;
+   profile_histogram_visible=false;
    const string panel=object_prefix+"Panel";
    ObjectCreate(0,panel,OBJ_RECTANGLE_LABEL,0,0,0);
    ObjectSetInteger(0,panel,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -592,9 +634,22 @@ int OnInit()
       ObjectSetInteger(0,line,OBJPROP_FONTSIZE,8);
       ObjectSetInteger(0,line,OBJPROP_SELECTABLE,false);
    }
+   const string histogram_button=object_prefix+"HistogramToggle";
+   ObjectCreate(0,histogram_button,OBJ_BUTTON,0,0,0);
+   ObjectSetInteger(0,histogram_button,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,histogram_button,OBJPROP_XDISTANCE,20);
+   ObjectSetInteger(0,histogram_button,OBJPROP_YDISTANCE,244);
+   ObjectSetInteger(0,histogram_button,OBJPROP_XSIZE,150);
+   ObjectSetInteger(0,histogram_button,OBJPROP_YSIZE,18);
+   ObjectSetInteger(0,histogram_button,OBJPROP_COLOR,clrWhite);
+   ObjectSetInteger(0,histogram_button,OBJPROP_FONTSIZE,8);
+   ObjectSetInteger(0,histogram_button,OBJPROP_STATE,false);
+   ObjectSetInteger(0,histogram_button,OBJPROP_ZORDER,100);
+   UpdateHistogramButton();
    ShowDashboardWaiting();
    UpdateSignalCounter();
    UpdatePreviousDayProfile();
+   SetHistogramVisibility(false);
    UpdatePreviousDaySignals();
    Print("Luminar-2 visualization ready: ",signal_label,
          ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%.");
@@ -1023,6 +1078,12 @@ void OnTick()
    MqlTick tick;
    if(!SymbolInfoTick(_Symbol,tick) || tick.bid<=0 || tick.ask<tick.bid) return;
    MaintainAreas(tick);
+}
+
+void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam)
+{
+   if(id==CHARTEVENT_OBJECT_CLICK && sparam==object_prefix+"HistogramToggle")
+      SetHistogramVisibility(!profile_histogram_visible);
 }
 
 void OnDeinit(const int reason)
