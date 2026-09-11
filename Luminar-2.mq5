@@ -48,7 +48,7 @@ datetime history_warning_bar=0;
 string object_prefix;
 int buy_signal_count=0;
 int sell_signal_count=0;
-const int dashboard_line_count=24;
+const int dashboard_line_count=16;
 
 void UpdateSignalCounter()
 {
@@ -156,7 +156,7 @@ void SetDashboardLine(const int row,const string text,const color line_color)
    if(row<0 || row>=dashboard_line_count)
       return;
    const string name=object_prefix+"CheckLine"+(string)row;
-   ObjectSetString(0,name,OBJPROP_TEXT,text);
+   ObjectSetString(0,name,OBJPROP_TEXT,(text=="" ? " " : text));
    ObjectSetInteger(0,name,OBJPROP_COLOR,line_color);
 }
 
@@ -194,14 +194,17 @@ void AddFastDashboardChecks(const MqlRates &mid,const MqlRates &signal,
    const bool anchor_wick_pass=WickPass(anchor_body,anchor_wick);
    const bool ready=breaker_direction && close_break && (breaker_sweep || anchor_sweep)
                     && breaker_wick_pass && anchor_wick_pass;
-   AddDashboardLine(row,"ONE-CANDLE  [2] -> [1]  |  "+(sell ? "SELL" : "BUY"),clrDeepSkyBlue);
-   AddCheckLine(row,true,"Anchor [2] "+(sell ? "bullish" : "bearish"));
-   AddCheckLine(row,breaker_direction,"Breaker [1] "+(sell ? "bearish" : "bullish"));
+   AddDashboardLine(row,"PRIORITY  ONE-CANDLE  [2] -> [1]  |  "+(sell ? "SELL" : "BUY"),clrDeepSkyBlue);
+   AddDashboardLine(row,"[x]  Anchor [2] "+(sell ? "bullish" : "bearish")
+                    +"    "+CheckBox(breaker_direction)+"  Breaker [1] "+(sell ? "bearish" : "bullish"),
+                    (breaker_direction ? clrLimeGreen : clrLightCoral));
    AddCheckLine(row,close_break,"[1] close crosses [2] open");
-   AddCheckLine(row,breaker_sweep,"[1] takes [2] "+side);
-   AddCheckLine(row,anchor_sweep,"[2] takes prior "+(string)Anchor_sweep_lookback+" HTF "+side);
-   AddCheckLine(row,breaker_wick_pass,"[1] wick "+DoubleToString(WickPercent(breaker_body,breaker_wick),1)+"%");
-   AddCheckLine(row,anchor_wick_pass,"[2] wick "+DoubleToString(WickPercent(anchor_body,anchor_wick),1)+"%");
+   AddDashboardLine(row,CheckBox(breaker_sweep)+"  [1] takes [2] "+side
+                    +"    "+CheckBox(anchor_sweep)+"  [2] takes prior "+(string)Anchor_sweep_lookback+" HTF "+side,
+                    ((breaker_sweep || anchor_sweep) ? clrLimeGreen : clrLightCoral));
+   AddDashboardLine(row,CheckBox(breaker_wick_pass)+"  [1] wick "+DoubleToString(WickPercent(breaker_body,breaker_wick),1)+"%"
+                    +"    "+CheckBox(anchor_wick_pass)+"  [2] wick "+DoubleToString(WickPercent(anchor_body,anchor_wick),1)+"%",
+                    ((breaker_wick_pass && anchor_wick_pass) ? clrLimeGreen : clrLightCoral));
    AddCheckLine(row,ready,"ONE-CANDLE RESULT");
 }
 
@@ -233,15 +236,19 @@ void AddSlowDashboardChecks(const MqlRates &source,const MqlRates &mid,const Mql
    const bool anchor_wick_pass=WickPass(anchor_body,anchor_wick);
    const bool ready=breaker_direction && open_side && close_break && (breaker_sweep || anchor_sweep)
                     && breaker_wick_pass && anchor_wick_pass;
-   AddDashboardLine(row,"TWO-CANDLE  [3] -> [2]+[1]  |  "+(sell ? "SELL" : "BUY"),clrGold);
-   AddCheckLine(row,true,"Anchor [3] "+(sell ? "bullish" : "bearish"));
-   AddCheckLine(row,breaker_direction,"Combined [2]+[1] "+(sell ? "bearish" : "bullish"));
-   AddCheckLine(row,open_side,"[1] opens on unbroken side");
-   AddCheckLine(row,close_break,"[1] close crosses [3] open");
-   AddCheckLine(row,breaker_sweep,"Combined breaker takes [3] "+side);
-   AddCheckLine(row,anchor_sweep,"[3] takes prior "+(string)Anchor_sweep_lookback+" HTF "+side);
-   AddCheckLine(row,breaker_wick_pass,"Combined wick "+DoubleToString(WickPercent(breaker_body,breaker_wick),1)+"%");
-   AddCheckLine(row,anchor_wick_pass,"[3] wick "+DoubleToString(WickPercent(anchor_body,anchor_wick),1)+"%");
+   AddDashboardLine(row,"FALLBACK  TWO-CANDLE  [3] -> [2]+[1]  |  "+(sell ? "SELL" : "BUY"),clrGold);
+   AddDashboardLine(row,"[x]  Anchor [3] "+(sell ? "bullish" : "bearish")
+                    +"    "+CheckBox(breaker_direction)+"  Combined [2]+[1] "+(sell ? "bearish" : "bullish"),
+                    (breaker_direction ? clrLimeGreen : clrLightCoral));
+   AddDashboardLine(row,CheckBox(open_side)+"  [1] opens on unbroken side"
+                    +"    "+CheckBox(close_break)+"  [1] close crosses [3] open",
+                    ((open_side && close_break) ? clrLimeGreen : clrLightCoral));
+   AddDashboardLine(row,CheckBox(breaker_sweep)+"  Combined takes [3] "+side
+                    +"    "+CheckBox(anchor_sweep)+"  [3] takes prior "+(string)Anchor_sweep_lookback+" HTF "+side,
+                    ((breaker_sweep || anchor_sweep) ? clrLimeGreen : clrLightCoral));
+   AddDashboardLine(row,CheckBox(breaker_wick_pass)+"  Combined wick "+DoubleToString(WickPercent(breaker_body,breaker_wick),1)+"%"
+                    +"    "+CheckBox(anchor_wick_pass)+"  [3] wick "+DoubleToString(WickPercent(anchor_body,anchor_wick),1)+"%",
+                    ((breaker_wick_pass && anchor_wick_pass) ? clrLimeGreen : clrLightCoral));
    AddCheckLine(row,ready,"TWO-CANDLE RESULT");
 }
 
@@ -251,9 +258,7 @@ void UpdateLiveChecks(const MqlRates &source,const MqlRates &mid,const MqlRates 
 {
    int row=0;
    AddDashboardLine(row,"LIVE CLOSED "+signal_label+"  |  "+TimeToString(signal.time,TIME_DATE|TIME_MINUTES),clrWhite);
-   AddDashboardLine(row,"",clrWhite);
    AddFastDashboardChecks(mid,signal,mid_prior_high,mid_prior_low,row);
-   AddDashboardLine(row,"",clrWhite);
    AddSlowDashboardChecks(source,mid,signal,source_prior_high,source_prior_low,row);
    for(;row<dashboard_line_count;row++)
       SetDashboardLine(row,"",clrWhite);
@@ -297,7 +302,7 @@ int OnInit()
    ObjectSetInteger(0,panel,OBJPROP_XDISTANCE,8);
    ObjectSetInteger(0,panel,OBJPROP_YDISTANCE,8);
    ObjectSetInteger(0,panel,OBJPROP_XSIZE,350);
-   ObjectSetInteger(0,panel,OBJPROP_YSIZE,385);
+   ObjectSetInteger(0,panel,OBJPROP_YSIZE,260);
    ObjectSetInteger(0,panel,OBJPROP_BGCOLOR,ColorToARGB(clrBlack,145));
    ObjectSetInteger(0,panel,OBJPROP_COLOR,clrDimGray);
    ObjectSetInteger(0,panel,OBJPROP_WIDTH,1);
