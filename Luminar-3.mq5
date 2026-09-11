@@ -32,6 +32,9 @@ input color  Inside_color       =clrPurple;    // Inside range box color
 input int    InpBoxOpacity      =115;     // Box opacity (0..255)
 input int    InpMinM1Bars       =30;      // Min M1 bars to accept a window
 input double Server_GMT_offset  =-999;    // Broker GMT offset hours (-999 = auto)
+input bool   Show_Previous_Ranges=true; // Show ranges + volume profiles for previous days (OFF = today only)
+input int    Profile_Levels     =20;      // Volume profile price bins
+input int    Profile_MaxWidth   =60;      // Volume profile max width (minutes)
 
 string g_prefix;
 int    g_r1_h,g_r1_m,g_r1_ih,g_r1_im;
@@ -279,6 +282,80 @@ int DrawRangeObjects(const string box_name,const string line_base,const string l
 }
 
 //+------------------------------------------------------------------+
+//| Volume profile histogram extending left of a range               |
+//+------------------------------------------------------------------+
+void DrawVolumeProfile(const string base,const color rc,
+                       const datetime rs,const datetime re)
+{
+   MqlRates bars[];
+   const int copied=CopyRates(_Symbol,PERIOD_M1,rs,re-1,bars);
+   const int minutes=(int)((re-rs)/60);
+   const int want=MathMin(InpMinM1Bars,minutes/2+1);
+   if(copied<want)
+      return;
+   double lo=1.0e100;
+   double hi=-1.0e100;
+   for(int b=0;b<copied;b++)
+   {
+      hi=MathMax(hi,bars[b].high);
+      lo=MathMin(lo,bars[b].low);
+   }
+   if(hi<=lo)
+      return;
+   const int levels=MathMax(2,Profile_Levels);
+   const double step=(hi-lo)/levels;
+   double bin_lo[],bin_hi[],vol[];
+   ArrayResize(bin_lo,levels);
+   ArrayResize(bin_hi,levels);
+   ArrayResize(vol,levels);
+   ArrayInitialize(vol,0.0);
+   for(int k=0;k<levels;k++)
+   {
+      bin_lo[k]=lo+k*step;
+      bin_hi[k]=lo+(k+1)*step;
+   }
+   for(int b=0;b<copied;b++)
+   {
+      const double h=bars[b].high;
+      const double l=bars[b].low;
+      const double span=h-l;
+      for(int k=0;k<levels;k++)
+      {
+         const double ol=MathMin(h,bin_hi[k])-MathMax(l,bin_lo[k]);
+         if(ol<=0.0)
+            continue;
+         vol[k]+=bars[b].tick_volume*(span>0.0?ol/span:1.0);
+      }
+   }
+   double vmax=0.0;
+   for(int k=0;k<levels;k++)
+      vmax=MathMax(vmax,vol[k]);
+   if(vmax<=0.0)
+      return;
+   const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
+   const color fill=BlendBoxColor(rc,chart_bg,InpBoxOpacity);
+   const int max_sec=Profile_MaxWidth*60;
+   for(int k=0;k<levels;k++)
+   {
+      if(vol[k]<=0.0)
+         continue;
+      const int w=MathMax(1,(int)MathRound((double)max_sec*vol[k]/vmax));
+      const datetime t1=rs-(datetime)w;
+      const string nm=base+"_VP"+IntegerToString(k);
+      if(!ObjectCreate(0,nm,OBJ_RECTANGLE,0,t1,bin_lo[k],rs,bin_hi[k]))
+         continue;
+      ObjectSetInteger(0,nm,OBJPROP_COLOR,fill);
+      ObjectSetInteger(0,nm,OBJPROP_BGCOLOR,fill);
+      ObjectSetInteger(0,nm,OBJPROP_FILL,true);
+      ObjectSetInteger(0,nm,OBJPROP_STYLE,STYLE_SOLID);
+      ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
+      ObjectSetInteger(0,nm,OBJPROP_BACK,false);
+      ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,nm,OBJPROP_HIDDEN,false);
+   }
+}
+
+//+------------------------------------------------------------------+
 //| Draw one range + its inside range for a given NY date            |
 //+------------------------------------------------------------------+
 void DrawRangePair(const int cy,const int cm,const int cd,
@@ -296,6 +373,7 @@ void DrawRangePair(const int cy,const int cm,const int cd,
    const string tag=IntegerToString(rh)+StringFormat("%02d",rm);
    const string ybase=IntegerToString(YMD(cy,cm,cd))+"_"+tag;
    const datetime line_end=rs+(datetime)(4*r_mins*60);
+   DrawVolumeProfile(g_prefix+"Y"+ybase,rc,rs,re);
    created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,tag,
                              rc,clrWhite,true,rs,re,line_end);
    const datetime is_=NyTimeChart(cy,cm,cd,ih,im);
@@ -327,6 +405,9 @@ void RenderBoxes()
    int y=0,m=0,d=0;
    NyDateOf(vstart,y,m,d);
    datetime cursor=UtcMidnight(y,m,d);
+   int ty=0,tm=0,td=0;
+   NyDateOf(now_server,ty,tm,td);
+   const int today_ymd=YMD(ty,tm,td);
    int created=0;
    for(int i=0;i<60;i++)
    {
@@ -338,6 +419,13 @@ void RenderBoxes()
       const datetime earliest=NyTimeChart(cy,cm,cd,0,0);
       if(earliest>vend+86400)
          break;
+      const bool is_today=(YMD(cy,cm,cd)==today_ymd);
+      if(!Show_Previous_Ranges && !is_today)
+      {
+         dt.day+=1;
+         cursor=StructToTime(dt);
+         continue;
+      }
       DrawRangePair(cy,cm,cd,g_r1_h,g_r1_m,R1_mins,g_r1_ih,g_r1_im,R1_inside_mins,
                     R1_color,now_server,vstart,vend,created);
       DrawRangePair(cy,cm,cd,g_r2_h,g_r2_m,R2_mins,g_r2_ih,g_r2_im,R2_inside_mins,
