@@ -334,7 +334,7 @@ void DrawDaySeparators(const datetime current_session)
 void DrawProfileLevel(const string suffix,const datetime start,const datetime end,const double price,
                       const color line_color,const int width)
 {
-   const string name=object_prefix+"VP_"+suffix;
+   const string name=object_prefix+"VP_"+IntegerToString((long)start)+"_"+suffix;
    if(ObjectCreate(0,name,OBJ_TREND,0,start,price,end,price))
    {
       ObjectSetInteger(0,name,OBJPROP_COLOR,line_color);
@@ -358,7 +358,6 @@ void DrawProfileLevel(const string suffix,const datetime start,const datetime en
 
 bool DrawPreviousDayVolumeProfile(const datetime current_session)
 {
-   ObjectsDeleteAll(0,object_prefix+"VP_");
    DrawDaySeparators(current_session);
    datetime profile_end=current_session;
    datetime profile_start=ShiftBrokerDay(profile_end,-1);
@@ -448,9 +447,9 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
       if(volume[i]<=0.0)
          continue;
       const datetime width=(datetime)MathMax(60.0,(double)profile_width*volume[i]/maximum);
-      const string name=object_prefix+"VP_Bin_"+IntegerToString(i);
-      if(!ObjectCreate(0,name,OBJ_RECTANGLE,0,profile_end-width,low+i*bin_size,
-                       profile_end,low+(i+1)*bin_size))
+      const string name=object_prefix+"VP_"+IntegerToString((long)profile_start)+"_Bin_"+IntegerToString(i);
+      if(!ObjectCreate(0,name,OBJ_RECTANGLE,0,profile_start,low+i*bin_size,
+                       profile_start+width,low+(i+1)*bin_size))
          continue;
       ObjectSetInteger(0,name,OBJPROP_COLOR,ColorToARGB(clrSteelBlue,90));
       ObjectSetInteger(0,name,OBJPROP_FILL,true);
@@ -471,6 +470,17 @@ void UpdatePreviousDayProfile()
       return;
    DrawPreviousDayVolumeProfile(current_session);
    last_profile_session=current_session;
+}
+
+void ClearSignalObjectsKeepProfiles()
+{
+   const string prefix="Luminar_"+_Symbol+"_";
+   for(int i=ObjectsTotal(0,0,-1)-1;i>=0;i--)
+   {
+      const string name=ObjectName(0,i,0,-1);
+      if(StringFind(name,prefix)==0 && StringFind(name,"_VP_")<0)
+         ObjectDelete(0,name);
+   }
 }
 
 int OnInit()
@@ -494,9 +504,8 @@ int OnInit()
    signal_label=(SIGNAL_TIMEFRAME==TF_M90 ? "M90" : EnumToString(signal_timeframe));
    StringReplace(signal_label,"PERIOD_","");
    object_prefix="Luminar_"+_Symbol+"_"+signal_label+"_";
-   // Remove stale zones from ALL earlier timeframes/versions on this chart,
-   // including drawings left by the former DhanuFX releases.
-   ObjectsDeleteAll(0,"Luminar_"+_Symbol+"_");
+   // Refresh signal/dashboard drawings while retaining completed day profiles.
+   ClearSignalObjectsKeepProfiles();
    ObjectsDeleteAll(0,"DhanuFX_"+_Symbol+"_");
    ArrayResize(areas,0);
    last_bar=0;
