@@ -38,6 +38,8 @@ c_mid2    = input.color(color.orange, "Inside mid line color", group = "Common")
 i_showPrev= input.bool(true,  "Show previous ranges (OFF = today only)", group = "Common")
 i_bsVol   = input.bool(true,  "Show buy/sell/delta volumes", group = "Common")
 i_binTxt  = input.bool(true,  "Show bin volume values (clutter)", group = "Volume Profile")
+i_txtGap  = input.int(8,      "Bin text left offset (min)", group = "Volume Profile")
+i_txtCw   = input.float(1.4,  "Char width (min/digit, tune for zoom)", group = "Volume Profile")
 i_vplvls  = input.int(20,     "Volume profile price bins", minval = 2, group = "Volume Profile")
 i_vpw     = input.int(60,     "Volume profile max width (min)", minval = 5, group = "Volume Profile")
 i_vptxt   = input.color(color.white, "Volume profile text color", group = "Volume Profile")
@@ -226,20 +228,22 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                     box.new(t1, bhi, rs, blo, xloc = xloc.bar_time,
                          border_color = bclr, bgcolor = bclr, border_width = 1)
                     if i_binTxt
-                        label.new(t1 - 8 * 60000, (blo + bhi) / 2, str.tostring(int(math.round(vq))),
+                        tv = str.tostring(int(math.round(vq)))
+                        label.new(int(t1 - i_txtGap * 60000 - str.length(tv) * i_txtCw * 60000 / 2),
+                             (blo + bhi) / 2, tv,
                              xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
                              style = label.style_none, size = size.small)
                     // POC / VAH / VAL word labels centered inside their own bin
                     if q == poc
-                        label.new(rs - 3 * 60000, (blo + bhi) / 2, "POC",
+                        label.new(rs - wq / 2, (blo + bhi) / 2, "POC",
                              xloc = xloc.bar_time, color = na, textcolor = i_pocc,
                              style = label.style_none, size = size.small)
                     if q == va_hi
-                        label.new(rs - 3 * 60000, (blo + bhi) / 2, "VAH",
+                        label.new(rs - wq / 2, (blo + bhi) / 2, "VAH",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
                              style = label.style_none, size = size.small)
                     if q == va_lo
-                        label.new(rs - 3 * 60000, (blo + bhi) / 2, "VAL",
+                        label.new(rs - wq / 2, (blo + bhi) / 2, "VAL",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
                              style = label.style_none, size = size.small)
         // ---- buy / sell / delta spread across range top ----
