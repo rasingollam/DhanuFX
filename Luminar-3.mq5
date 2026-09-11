@@ -12,15 +12,13 @@ input int    R1_mins          =90;        // Range 1 length (minutes)
 input string R1_inside_start  ="09:30";   // Range 1 inside start (NY HH:MM)
 input int    R1_inside_mins   =15;        // Range 1 inside length (minutes)
 input color  R1_color         =clrDodgerBlue;  // Range 1 box color
-input color  R1_inside_color  =clrPurple;      // Range 1 inside box color
 
 //--- Range 2
 input string R2_start         ="01:30";   // Range 2 start (NY HH:MM)
 input int    R2_mins          =90;        // Range 2 length (minutes)
-input string R2_inside_start  ="03:00";   // Range 2 inside start (NY HH:MM)
+input string R2_inside_start  ="01:30";   // Range 2 inside start (NY HH:MM)
 input int    R2_inside_mins   =15;        // Range 2 inside length (minutes)
 input color  R2_color         =clrGold;       // Range 2 box color
-input color  R2_inside_color  =clrOrangeRed;  // Range 2 inside box color
 
 //--- Range 3
 input string R3_start         ="21:00";   // Range 3 start (NY HH:MM)
@@ -28,9 +26,9 @@ input int    R3_mins          =90;        // Range 3 length (minutes)
 input string R3_inside_start  ="21:00";   // Range 3 inside start (NY HH:MM)
 input int    R3_inside_mins   =15;        // Range 3 inside length (minutes)
 input color  R3_color         =clrLime;       // Range 3 box color
-input color  R3_inside_color  =clrAqua;       // Range 3 inside box color
 
 //--- Common
+input color  Inside_color       =clrPurple;    // Inside range box color
 input int    InpBoxOpacity      =115;     // Box opacity (0..255)
 input int    InpMinM1Bars       =30;      // Min M1 bars to accept a window
 input double Server_GMT_offset  =-999;    // Broker GMT offset hours (-999 = auto)
@@ -210,12 +208,13 @@ color BlendBoxColor(const color fg,const long bg,int alpha)
 //| Draw one dotted horizontal level                                 |
 //+------------------------------------------------------------------+
 void DrawDottedLevel(const string name,const datetime t1,const datetime t2,
-                     const double price,const color clr,const string tip)
+                     const double price,const color clr,const ENUM_LINE_STYLE style,
+                     const string tip)
 {
    if(!ObjectCreate(0,name,OBJ_TREND,0,t1,price,t2,price))
       return;
    ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
-   ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_DOT);
+   ObjectSetInteger(0,name,OBJPROP_STYLE,style);
    ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
    ObjectSetInteger(0,name,OBJPROP_RAY_LEFT,false);
    ObjectSetInteger(0,name,OBJPROP_RAY_RIGHT,false);
@@ -230,6 +229,7 @@ void DrawDottedLevel(const string name,const datetime t1,const datetime t2,
 //+------------------------------------------------------------------+
 int DrawRangeObjects(const string box_name,const string line_base,const string label,
                      const color box_color,const color mid_color,
+                     const bool solid_hl,
                      const datetime s,const datetime e,const datetime line_end)
 {
    MqlRates bars[];
@@ -270,11 +270,11 @@ int DrawRangeObjects(const string box_name,const string line_base,const string l
    const string lt=TimeToString(e,TIME_DATE|TIME_MINUTES)+".."+
                    TimeToString(line_end,TIME_DATE|TIME_MINUTES)+" | ";
    DrawDottedLevel(line_base+"_H",e,line_end,hi,box_color,
-      lt+label+" high "+DoubleToString(hi,_Digits));
-   DrawDottedLevel(line_base+"_M",e,line_end,mid,mid_color,
+      (solid_hl?STYLE_SOLID:STYLE_DOT),lt+label+" high "+DoubleToString(hi,_Digits));
+   DrawDottedLevel(line_base+"_M",e,line_end,mid,mid_color,STYLE_DOT,
       lt+label+" mid "+DoubleToString(mid,_Digits));
    DrawDottedLevel(line_base+"_L",e,line_end,lo,box_color,
-      lt+label+" low "+DoubleToString(lo,_Digits));
+      (solid_hl?STYLE_SOLID:STYLE_DOT),lt+label+" low "+DoubleToString(lo,_Digits));
    return n+3;
 }
 
@@ -284,7 +284,7 @@ int DrawRangeObjects(const string box_name,const string line_base,const string l
 void DrawRangePair(const int cy,const int cm,const int cd,
                    const int rh,const int rm,const int r_mins,
                    const int ih,const int im,const int i_mins,
-                   const color rc,const color ric,
+                   const color rc,
                    const datetime now_server,
                    const datetime vstart,const datetime vend,
                    int &created)
@@ -297,12 +297,12 @@ void DrawRangePair(const int cy,const int cm,const int cd,
    const string ybase=IntegerToString(YMD(cy,cm,cd))+"_"+tag;
    const datetime line_end=rs+(datetime)(4*r_mins*60);
    created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,tag,
-                             rc,clrWhite,rs,re,line_end);
+                             rc,clrWhite,true,rs,re,line_end);
    const datetime is_=NyTimeChart(cy,cm,cd,ih,im);
    const datetime ie_=is_+(datetime)(i_mins*60);
    if(ie_<=now_server && is_>=rs && ie_<=re)
       created+=DrawRangeObjects(g_prefix+ybase+"_IN",g_prefix+"Y"+ybase+"_IN",tag+"IN",
-                                ric,clrOrange,is_,ie_,line_end);
+                                Inside_color,clrOrange,false,is_,ie_,line_end);
 }
 
 //+------------------------------------------------------------------+
@@ -339,11 +339,11 @@ void RenderBoxes()
       if(earliest>vend+86400)
          break;
       DrawRangePair(cy,cm,cd,g_r1_h,g_r1_m,R1_mins,g_r1_ih,g_r1_im,R1_inside_mins,
-                    R1_color,R1_inside_color,now_server,vstart,vend,created);
+                    R1_color,now_server,vstart,vend,created);
       DrawRangePair(cy,cm,cd,g_r2_h,g_r2_m,R2_mins,g_r2_ih,g_r2_im,R2_inside_mins,
-                    R2_color,R2_inside_color,now_server,vstart,vend,created);
+                    R2_color,now_server,vstart,vend,created);
       DrawRangePair(cy,cm,cd,g_r3_h,g_r3_m,R3_mins,g_r3_ih,g_r3_im,R3_inside_mins,
-                    R3_color,R3_inside_color,now_server,vstart,vend,created);
+                    R3_color,now_server,vstart,vend,created);
       dt.day+=1;
       cursor=StructToTime(dt);
    }
