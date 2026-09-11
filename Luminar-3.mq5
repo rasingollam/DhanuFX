@@ -338,12 +338,12 @@ void DrawVolumeProfile(const string base,const color rc,
       return;
    const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
    const color fill=BlendBoxColor(rc,chart_bg,InpBoxOpacity);
-   const int max_sec=Profile_MaxWidth*60;
+const int max_sec=Profile_MaxWidth*60;
    const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
    const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
    const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    const double bin_px=((hi-lo)>0.0 && pmax>pmin && hpix>0.0)
-                       ? step*hpix/(pmax-pmin) : 8.0;
+                        ? step*hpix/(pmax-pmin) : 8.0;
    for(int k=0;k<levels;k++)
    {
       if(vol[k]<=0.0)
@@ -385,7 +385,7 @@ void DrawVolumeProfile(const string base,const color rc,
 }
 
 //+------------------------------------------------------------------+
-//| Buy/Sell volume + difference labels below a main range box       |
+//| Buy/Sell volume + difference on a single line below main range   |
 //+------------------------------------------------------------------+
 int DrawBuySellVolume(const string base,const datetime rs,const datetime re)
 {
@@ -398,8 +398,10 @@ int DrawBuySellVolume(const string base,const datetime rs,const datetime re)
    double buy=0.0;
    double sell=0.0;
    double lo=1.0e100;
+   double hi=-1.0e100;
    for(int b=0;b<copied;b++)
    {
+      hi=MathMax(hi,bars[b].high);
       lo=MathMin(lo,bars[b].low);
       const double v=bars[b].tick_volume;
       if(bars[b].close>bars[b].open)
@@ -412,30 +414,41 @@ int DrawBuySellVolume(const string base,const datetime rs,const datetime re)
          sell+=v*0.5;
       }
    }
-   if(lo>=1.0e99)
+   if(lo>=1.0e99 || hi<=lo)
       return 0;
+   const long   bv=(long)MathRound(buy);
+   const long   sv=(long)MathRound(sell);
+   const double diff=buy-sell;
+   const string buyTxt ="Buy  "+IntegerToString(bv)+"  |  ";
+   const string sellTxt="Sell "+IntegerToString(sv)+"  |  ";
+   const string diffTxt="Delta "+IntegerToString((long)MathRound(MathAbs(diff)));
    const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
    const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
    const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   const double per_px=(pmax>pmin && hpix>0.0) ? (pmax-pmin)/hpix : _Point*20.0;
-   const double gap=(double)BuySell_FontSize*per_px*1.35;
-   const long bv=(long)MathRound(buy);
-   const long sv=(long)MathRound(sell);
-   const double diff=buy-sell;
-   const string dTxt=(diff>=0?"Diff  +":"Diff  -")+
-                     IntegerToString((long)MathRound(MathAbs(diff)));
-   struct P { string nm; double price; string txt; color clr; };
+   const double price_per_px=(pmax>pmin && hpix>0.0) ? (pmax-pmin)/hpix : _Point*20.0;
+   const double y=hi+(double)BuySell_FontSize*1.8*price_per_px;
+   datetime vstart=0,vend=0;
+   double cspan=60.0;
+   if(GetVisibleRange(vstart,vend) && vend>vstart)
+      cspan=(double)(vend-vstart);
+   const long xpix=ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   const double sec_per_px=(xpix>0 ? cspan/(double)xpix : 60.0);
+   const double char_sec=BuySell_FontSize*0.6*sec_per_px;
+   const datetime x0=rs;
+   const datetime x1=rs+(datetime)(StringLen(buyTxt)*char_sec);
+   const datetime x2=rs+(datetime)((StringLen(buyTxt)+StringLen(sellTxt))*char_sec);
+   struct P { string nm; datetime x; double price; string txt; color clr; };
    P items[3];
-   items[0].nm=base+"_BSB"; items[0].price=lo-gap;
-   items[0].txt="Buy  "+IntegerToString(bv); items[0].clr=clrLimeGreen;
-   items[1].nm=base+"_BSS"; items[1].price=lo-2.0*gap;
-   items[1].txt="Sell "+IntegerToString(sv); items[1].clr=clrTomato;
-   items[2].nm=base+"_BSD"; items[2].price=lo-3.0*gap;
-   items[2].txt=dTxt; items[2].clr=Profile_TextColor;
+   items[0].nm=base+"_BSB"; items[0].x=x0; items[0].price=y;
+   items[0].txt=buyTxt;  items[0].clr=clrLimeGreen;
+   items[1].nm=base+"_BSS"; items[1].x=x1; items[1].price=y;
+   items[1].txt=sellTxt; items[1].clr=clrTomato;
+   items[2].nm=base+"_BSD"; items[2].x=x2; items[2].price=y;
+   items[2].txt=diffTxt; items[2].clr=(diff>=0?clrLimeGreen:clrTomato);
    int n=0;
    for(int k=0;k<3;k++)
    {
-      if(!ObjectCreate(0,items[k].nm,OBJ_TEXT,0,rs,items[k].price))
+      if(!ObjectCreate(0,items[k].nm,OBJ_TEXT,0,items[k].x,items[k].price))
          continue;
       ObjectSetString(0,items[k].nm,OBJPROP_TEXT,items[k].txt);
       ObjectSetInteger(0,items[k].nm,OBJPROP_COLOR,items[k].clr);
