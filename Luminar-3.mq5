@@ -7,8 +7,8 @@
 #property version   "1.00"
 #property strict
 
-input string Session_start_time="09:00";    // NY session start (HH:MM)
-input int    Session_minutes    =90;        // Session candle length (minutes)
+input string Range_start_time="09:00";      // First range start (NY time HH:MM)
+input int    Range_minutes   =90;           // Range length (minutes)
 input color  InpBoxColor        =clrDodgerBlue; // Next-candle box color
 input int    InpBoxOpacity      =115;       // Box opacity (0..255)
 input int    InpMinM1Bars       =30;        // Min M1 bars to accept a window
@@ -28,7 +28,7 @@ long   g_last_range_key=0;
 bool ParseSessionTime()
 {
    string parts[];
-   if(StringSplit(Session_start_time,':',parts)!=2)
+   if(StringSplit(Range_start_time,':',parts)!=2)
       return false;
    int h=(int)StringToInteger(parts[0]);
    int m=(int)StringToInteger(parts[1]);
@@ -191,11 +191,11 @@ color BlendBoxColor(const color fg,const long bg,int alpha)
 //| Draw one dotted horizontal level                                 |
 //+------------------------------------------------------------------+
 void DrawDottedLevel(const string name,const datetime t1,const datetime t2,
-                     const double price,const string tip)
+                     const double price,const color clr,const string tip)
 {
    if(!ObjectCreate(0,name,OBJ_TREND,0,t1,price,t2,price))
       return;
-   ObjectSetInteger(0,name,OBJPROP_COLOR,InpBoxColor);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
    ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_DOT);
    ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
    ObjectSetInteger(0,name,OBJPROP_RAY_LEFT,false);
@@ -204,38 +204,6 @@ void DrawDottedLevel(const string name,const datetime t1,const datetime t2,
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
    ObjectSetString(0,name,OBJPROP_TOOLTIP,tip);
-}
-
-//+------------------------------------------------------------------+
-//| Dotted high/mid/low lines for one 90m candle                     |
-//+------------------------------------------------------------------+
-int DrawCandleLines(const string base,const datetime win_start,const datetime win_end,
-                    const datetime line_start,const datetime line_end,const int index)
-{
-   MqlRates bars[];
-   const int copied=CopyRates(_Symbol,PERIOD_M1,win_start,win_end-1,bars);
-   if(copied<InpMinM1Bars)
-      return 0;
-   double hi=-1.0e100;
-   double lo=1.0e100;
-   for(int b=0;b<copied;b++)
-   {
-      hi=MathMax(hi,bars[b].high);
-      lo=MathMin(lo,bars[b].low);
-   }
-   if(hi<=lo)
-      return 0;
-   const double mid=(hi+lo)/2.0;
-   const string sfx=IntegerToString(index);
-   const string times=TimeToString(line_start,TIME_DATE|TIME_MINUTES)+".."+
-                      TimeToString(line_end,TIME_DATE|TIME_MINUTES);
-   DrawDottedLevel(base+"_H"+sfx,line_start,line_end,hi,
-      "Candle "+sfx+" high "+DoubleToString(hi,_Digits)+" | "+times);
-   DrawDottedLevel(base+"_M"+sfx,line_start,line_end,mid,
-      "Candle "+sfx+" mid "+DoubleToString(mid,_Digits)+" | "+times);
-   DrawDottedLevel(base+"_L"+sfx,line_start,line_end,lo,
-      "Candle "+sfx+" low "+DoubleToString(lo,_Digits)+" | "+times);
-   return 3;
 }
 
 //+------------------------------------------------------------------+
@@ -272,14 +240,14 @@ void RenderBoxes()
       const datetime s1=NySessionStartChart(cy,cm,cd);
       if(s1>vend+86400)
          break;
-      const datetime e1=s1+(datetime)(Session_minutes*60);
-      const datetime e2=e1+(datetime)(Session_minutes*60);
-      const datetime e3=e2+(datetime)(Session_minutes*60);
-      const datetime e4=e3+(datetime)(Session_minutes*60);
-      if(e2<=now_server && e1>=vstart && s1<vend)
+      const datetime e1=s1+(datetime)(Range_minutes*60);
+      const datetime e2=e1+(datetime)(Range_minutes*60);
+      const datetime e3=e2+(datetime)(Range_minutes*60);
+      const datetime e4=e3+(datetime)(Range_minutes*60);
+      if(e1<=now_server && e1>=vstart && s1<vend)
       {
          MqlRates bars[];
-         const int copied=CopyRates(_Symbol,PERIOD_M1,e1,e2-1,bars);
+         const int copied=CopyRates(_Symbol,PERIOD_M1,s1,e1-1,bars);
          if(copied>=InpMinM1Bars)
          {
             double hi=-1.0e100;
@@ -292,8 +260,8 @@ void RenderBoxes()
             box_log+=StringFormat("  box %s..%s win %s..%s bars %d high %.2f low %.2f\n",
                TimeToString(s1,TIME_DATE|TIME_MINUTES),
                TimeToString(e1,TIME_DATE|TIME_MINUTES),
-               TimeToString(e1,TIME_DATE|TIME_MINUTES),
-               TimeToString(e2,TIME_DATE|TIME_MINUTES),copied,hi,lo);
+               TimeToString(s1,TIME_DATE|TIME_MINUTES),
+               TimeToString(e1,TIME_DATE|TIME_MINUTES),copied,hi,lo);
             if(hi>lo)
             {
                const string name=g_prefix+IntegerToString(YMD(cy,cm,cd));
@@ -311,35 +279,24 @@ void RenderBoxes()
                   ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
                   ObjectSetString(0,name,OBJPROP_TOOLTIP,
                      TimeToString(s1,TIME_DATE|TIME_MINUTES)+".."+
-                     TimeToString(e1,TIME_DATE|TIME_MINUTES)+" | next candle "+
-                     TimeToString(e1,TIME_DATE|TIME_MINUTES)+".."+
-                     TimeToString(e2,TIME_DATE|TIME_MINUTES)+" | high "+
+                     TimeToString(e1,TIME_DATE|TIME_MINUTES)+" | range high "+
                      DoubleToString(hi,_Digits)+" low "+DoubleToString(lo,_Digits));
                   created++;
+                  const string lbase=g_prefix+"Y"+IntegerToString(YMD(cy,cm,cd));
+                  const datetime lstart=e1;
+                  const datetime lend=s1+(datetime)(4*Range_minutes*60);
+                  const string ltimes=TimeToString(lstart,TIME_DATE|TIME_MINUTES)+".."+
+                                      TimeToString(lend,TIME_DATE|TIME_MINUTES)+" | ";
+                  DrawDottedLevel(lbase+"_H",lstart,lend,hi,InpBoxColor,
+                     ltimes+"box high "+DoubleToString(hi,_Digits));
+                  DrawDottedLevel(lbase+"_M",lstart,lend,(hi+lo)/2.0,clrWhite,
+                     ltimes+"box mid "+DoubleToString((hi+lo)/2.0,_Digits));
+                  DrawDottedLevel(lbase+"_L",lstart,lend,lo,InpBoxColor,
+                     ltimes+"box low "+DoubleToString(lo,_Digits));
+                  created+=3;
                }
             }
          }
-      }
-      if(e1>=vstart && s1<vend)
-      {
-         const string base=g_prefix+"Y"+IntegerToString(YMD(cy,cm,cd));
-         datetime line_end=e1;
-         for(int k=0;k<3;k++)
-         {
-            const datetime we=e1+(datetime)((k+1)*Session_minutes*60);
-            if(we>now_server)
-               break;
-            line_end=we;
-         }
-         if(line_end>e1)
-            for(int k=0;k<3;k++)
-            {
-               const datetime ws=e1+(datetime)(k*Session_minutes*60);
-               const datetime we=ws+(datetime)(Session_minutes*60);
-               if(we>line_end)
-                  break;
-               created+=DrawCandleLines(base,ws,we,e1,line_end,k+1);
-            }
       }
       dt.day+=1;
       cursor=StructToTime(dt);
@@ -370,10 +327,10 @@ int OnInit()
    g_prefix="Luminar3_"+_Symbol+"_";
    if(!ParseSessionTime())
    {
-      Print("Invalid Session_start_time input. Expected HH:MM");
+      Print("Invalid Range_start_time input. Expected HH:MM");
       return INIT_PARAMETERS_INCORRECT;
    }
-   if(Session_minutes<1 || Session_minutes>1440)
+   if(Range_minutes<1 || Range_minutes>1440)
       return INIT_PARAMETERS_INCORRECT;
    if(InpMinM1Bars<1)
       return INIT_PARAMETERS_INCORRECT;
