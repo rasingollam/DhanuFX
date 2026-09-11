@@ -188,6 +188,57 @@ color BlendBoxColor(const color fg,const long bg,int alpha)
 }
 
 //+------------------------------------------------------------------+
+//| Draw one dotted horizontal level                                 |
+//+------------------------------------------------------------------+
+void DrawDottedLevel(const string name,const datetime t1,const datetime t2,
+                     const double price,const string tip)
+{
+   if(!ObjectCreate(0,name,OBJ_TREND,0,t1,price,t2,price))
+      return;
+   ObjectSetInteger(0,name,OBJPROP_COLOR,InpBoxColor);
+   ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_DOT);
+   ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
+   ObjectSetInteger(0,name,OBJPROP_RAY_LEFT,false);
+   ObjectSetInteger(0,name,OBJPROP_RAY_RIGHT,false);
+   ObjectSetInteger(0,name,OBJPROP_BACK,false);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
+   ObjectSetString(0,name,OBJPROP_TOOLTIP,tip);
+}
+
+//+------------------------------------------------------------------+
+//| Dotted high/mid/low lines for one 90m candle                     |
+//+------------------------------------------------------------------+
+int DrawCandleLines(const string base,const datetime win_start,const datetime win_end,
+                    const datetime line_start,const datetime line_end,const int index)
+{
+   MqlRates bars[];
+   const int copied=CopyRates(_Symbol,PERIOD_M1,win_start,win_end-1,bars);
+   if(copied<InpMinM1Bars)
+      return 0;
+   double hi=-1.0e100;
+   double lo=1.0e100;
+   for(int b=0;b<copied;b++)
+   {
+      hi=MathMax(hi,bars[b].high);
+      lo=MathMin(lo,bars[b].low);
+   }
+   if(hi<=lo)
+      return 0;
+   const double mid=(hi+lo)/2.0;
+   const string sfx=IntegerToString(index);
+   const string times=TimeToString(line_start,TIME_DATE|TIME_MINUTES)+".."+
+                      TimeToString(line_end,TIME_DATE|TIME_MINUTES);
+   DrawDottedLevel(base+"_H"+sfx,line_start,line_end,hi,
+      "Candle "+sfx+" high "+DoubleToString(hi,_Digits)+" | "+times);
+   DrawDottedLevel(base+"_M"+sfx,line_start,line_end,mid,
+      "Candle "+sfx+" mid "+DoubleToString(mid,_Digits)+" | "+times);
+   DrawDottedLevel(base+"_L"+sfx,line_start,line_end,lo,
+      "Candle "+sfx+" low "+DoubleToString(lo,_Digits)+" | "+times);
+   return 3;
+}
+
+//+------------------------------------------------------------------+
 //| Render the blue next-candle boxes for all visible NY days        |
 //+------------------------------------------------------------------+
 void RenderBoxes()
@@ -204,7 +255,7 @@ void RenderBoxes()
    if(!GetVisibleRange(vstart,vend))
       return;
    const long range_key=(long)vstart^((long)vend<<32);
-   ObjectsDeleteAll(0,g_prefix,0,OBJ_RECTANGLE);
+   ObjectsDeleteAll(0,g_prefix,0);
    const datetime now_server=TimeTradeServer();
    int y=0,m=0,d=0;
    NyDateOf(vstart,y,m,d);
@@ -223,6 +274,8 @@ void RenderBoxes()
          break;
       const datetime e1=s1+(datetime)(Session_minutes*60);
       const datetime e2=e1+(datetime)(Session_minutes*60);
+      const datetime e3=e2+(datetime)(Session_minutes*60);
+      const datetime e4=e3+(datetime)(Session_minutes*60);
       if(e2<=now_server && e1>=vstart && s1<vend)
       {
          MqlRates bars[];
@@ -266,6 +319,27 @@ void RenderBoxes()
                }
             }
          }
+      }
+      if(e1>=vstart && s1<vend)
+      {
+         const string base=g_prefix+"Y"+IntegerToString(YMD(cy,cm,cd));
+         datetime line_end=e1;
+         for(int k=0;k<3;k++)
+         {
+            const datetime we=e1+(datetime)((k+1)*Session_minutes*60);
+            if(we>now_server)
+               break;
+            line_end=we;
+         }
+         if(line_end>e1)
+            for(int k=0;k<3;k++)
+            {
+               const datetime ws=e1+(datetime)(k*Session_minutes*60);
+               const datetime we=ws+(datetime)(Session_minutes*60);
+               if(we>line_end)
+                  break;
+               created+=DrawCandleLines(base,ws,we,e1,line_end,k+1);
+            }
       }
       dt.day+=1;
       cursor=StructToTime(dt);
@@ -316,7 +390,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   ObjectsDeleteAll(0,g_prefix,0,OBJ_RECTANGLE);
+   ObjectsDeleteAll(0,g_prefix,0);
    ChartRedraw(0);
 }
 //+------------------------------------------------------------------+
