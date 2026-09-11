@@ -9,6 +9,10 @@ Higher-timeframe signal candle drawing with area selection and a configurable di
 | SIGNAL_TIMEFRAME | M90 | Higher timeframe for the signal and area of interest; standard MT5 dropdown periods plus M90 |
 | Body_to_wick_ratio | 20 | Strict maximum directional wick percentage, in %; 0..100 |
 | Anchor_sweep_lookback | 3 | Number of preceding HTF candles used for the alternate anchor high/low sweep |
+| Broker_day_start_time | 00:00 | Broker-server daily session start, in `HH:MI` |
+| Value_area_percent | 68.8 | Percentage of prior-day tick volume included in the value area |
+| Volume_profile_bin_points | 10 | Price-bin size used for the prior-day tick-volume profile |
+| Day_separator_count | 20 | Number of dotted broker-day boundaries to draw |
 
 ## Pattern rules
 
@@ -27,6 +31,8 @@ Buy (mirror): anchor bearish; breaker close above breaker open; breaker close ab
 ## Visualization
 
 Gold boxes show the selected HTF anchor body ([2] or [3], depending on the variant), blue boxes show the break candle[1], and dashed green/red boxes project the buy/sell area of interest. Labels identify the HTF and the anchor index. Each detected signal also receives a checklist showing direction, close, open-side, both sweep alternatives, and wick checks. On each new signal the EA draws the candle bodies and projects the zone; stale drawings from earlier timeframes/versions are removed on init.
+
+The EA also draws a tick-volume profile for the most recent completed broker day. Tick volume from M1 bars is accumulated into price bins. The POC (gold), VAH, and VAL (blue) are drawn only across that prior session; the profile histogram also remains within that session. Dotted gray vertical lines mark broker-day starts.
 
 ## Area selection
 

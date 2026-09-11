@@ -37,6 +37,10 @@ enum SIGNAL_PERIOD
 input SIGNAL_PERIOD SIGNAL_TIMEFRAME=TF_M90; // Higher timeframe / signal candle
 input double Body_to_wick_ratio=20.0; // Maximum directional wick percentage (strictly less)
 input int Anchor_sweep_lookback=3; // Prior HTF candles used for alternate anchor high/low sweep
+input string Broker_day_start_time="00:00"; // Broker server session start (HH:MI)
+input double Value_area_percent=68.8; // Prior-day tick-volume value area
+input int Volume_profile_bin_points=10; // Price bin size in chart points
+input int Day_separator_count=20; // Broker-day boundaries to draw
 
 InterestArea areas[];
 datetime last_bar=0;
@@ -49,6 +53,9 @@ string object_prefix;
 int buy_signal_count=0;
 int sell_signal_count=0;
 const int dashboard_line_count=16;
+int broker_day_hour=0;
+int broker_day_minute=0;
+datetime last_profile_session=0;
 
 void UpdateSignalCounter()
 {
@@ -272,12 +279,213 @@ void ShowDashboardWaiting()
       SetDashboardLine(i,"",clrWhite);
 }
 
+bool ParseBrokerDayStart()
+{
+   if(StringLen(Broker_day_start_time)!=5 || StringGetCharacter(Broker_day_start_time,2)!=58)
+      return false;
+   broker_day_hour=(int)StringToInteger(StringSubstr(Broker_day_start_time,0,2));
+   broker_day_minute=(int)StringToInteger(StringSubstr(Broker_day_start_time,3,2));
+   return broker_day_hour>=0 && broker_day_hour<=23 && broker_day_minute>=0 && broker_day_minute<=59;
+}
+
+datetime BrokerDayStart(const datetime time)
+{
+   MqlDateTime date;
+   if(!TimeToStruct(time,date))
+      return 0;
+   date.hour=broker_day_hour;
+   date.min=broker_day_minute;
+   date.sec=0;
+   datetime start=StructToTime(date);
+   if(time<start)
+      start-=86400;
+   return start;
+}
+
+datetime ShiftBrokerDay(const datetime start,const int days)
+{
+   MqlDateTime date;
+   if(!TimeToStruct(start,date))
+      return 0;
+   date.day+=days;
+   return StructToTime(date);
+}
+
+void DrawDaySeparators(const datetime current_session)
+{
+   for(int i=0;i<Day_separator_count;i++)
+   {
+      const datetime boundary=ShiftBrokerDay(current_session,-i);
+      if(boundary==0)
+         continue;
+      const string name=object_prefix+"VP_Day_"+IntegerToString((long)boundary);
+      if(!ObjectCreate(0,name,OBJ_VLINE,0,boundary,0.0))
+         continue;
+      ObjectSetInteger(0,name,OBJPROP_COLOR,clrDimGray);
+      ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_DOT);
+      ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
+      ObjectSetInteger(0,name,OBJPROP_BACK,true);
+      ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
+      ObjectSetString(0,name,OBJPROP_TOOLTIP,"Broker day start "+TimeToString(boundary,TIME_DATE|TIME_MINUTES));
+   }
+}
+
+void DrawProfileLevel(const string suffix,const datetime start,const datetime end,const double price,
+                      const color line_color,const int width)
+{
+   const string name=object_prefix+"VP_"+suffix;
+   if(ObjectCreate(0,name,OBJ_TREND,0,start,price,end,price))
+   {
+      ObjectSetInteger(0,name,OBJPROP_COLOR,line_color);
+      ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_SOLID);
+      ObjectSetInteger(0,name,OBJPROP_WIDTH,width);
+      ObjectSetInteger(0,name,OBJPROP_RAY_LEFT,false);
+      ObjectSetInteger(0,name,OBJPROP_RAY_RIGHT,false);
+      ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+      ObjectSetString(0,name,OBJPROP_TOOLTIP,"Previous broker day "+suffix+"  "+DoubleToString(price,_Digits));
+   }
+   const string label=name+"_Label";
+   if(ObjectCreate(0,label,OBJ_TEXT,0,end,price))
+   {
+      ObjectSetString(0,label,OBJPROP_TEXT," "+suffix+" "+DoubleToString(price,_Digits));
+      ObjectSetInteger(0,label,OBJPROP_COLOR,line_color);
+      ObjectSetInteger(0,label,OBJPROP_ANCHOR,ANCHOR_LEFT);
+      ObjectSetInteger(0,label,OBJPROP_FONTSIZE,8);
+      ObjectSetInteger(0,label,OBJPROP_SELECTABLE,false);
+   }
+}
+
+bool DrawPreviousDayVolumeProfile(const datetime current_session)
+{
+   ObjectsDeleteAll(0,object_prefix+"VP_");
+   DrawDaySeparators(current_session);
+   datetime profile_end=current_session;
+   datetime profile_start=ShiftBrokerDay(profile_end,-1);
+   MqlRates bars[];
+   bool found=false;
+   for(int i=0;i<7;i++)
+   {
+      if(profile_start==0 || profile_end<=profile_start)
+         return false;
+      if(CopyRates(_Symbol,PERIOD_M1,profile_start,profile_end-1,bars)>0)
+      {
+         found=true;
+         break;
+      }
+      profile_end=profile_start;
+      profile_start=ShiftBrokerDay(profile_end,-1);
+   }
+   if(!found)
+      return false;
+
+   double low=1.0e100;
+   double high=-1.0e100;
+   for(int i=0;i<ArraySize(bars);i++)
+   {
+      low=MathMin(low,bars[i].low);
+      high=MathMax(high,bars[i].high);
+   }
+   double bin_size=(double)Volume_profile_bin_points*_Point;
+   if(bin_size<=0.0 || high<low)
+      return false;
+   int bins=(int)MathFloor((high-low)/bin_size)+1;
+   if(bins>500)
+   {
+      bin_size=MathCeil((high-low)/(500.0*_Point))*_Point;
+      bins=(int)MathFloor((high-low)/bin_size)+1;
+   }
+   if(bins<=0 || bins>500)
+      return false;
+   double volume[];
+   if(ArrayResize(volume,bins)!=bins)
+      return false;
+   double total=0.0;
+   double maximum=0.0;
+   int poc=0;
+   for(int i=0;i<ArraySize(bars);i++)
+   {
+      int bin=(int)MathFloor((bars[i].close-low)/bin_size);
+      if(bin<0) bin=0;
+      if(bin>=bins) bin=bins-1;
+      volume[bin]+=(double)bars[i].tick_volume;
+      total+=(double)bars[i].tick_volume;
+   }
+   if(total<=0.0)
+      return false;
+   for(int i=0;i<bins;i++)
+   {
+      if(volume[i]>maximum)
+      {
+         maximum=volume[i];
+         poc=i;
+      }
+   }
+   int value_low=poc;
+   int value_high=poc;
+   double value_volume=volume[poc];
+   const double target=total*Value_area_percent/100.0;
+   while(value_volume<target)
+   {
+      const double lower=(value_low>0 ? volume[value_low-1] : -1.0);
+      const double upper=(value_high<bins-1 ? volume[value_high+1] : -1.0);
+      if(lower<0.0 && upper<0.0)
+         break;
+      if(upper>lower)
+      {
+         value_high++;
+         value_volume+=upper;
+      }
+      else
+      {
+         value_low--;
+         value_volume+=lower;
+      }
+   }
+   const datetime profile_width=(profile_end-profile_start)/3;
+   for(int i=0;i<bins;i++)
+   {
+      if(volume[i]<=0.0)
+         continue;
+      const datetime width=(datetime)MathMax(60.0,(double)profile_width*volume[i]/maximum);
+      const string name=object_prefix+"VP_Bin_"+IntegerToString(i);
+      if(!ObjectCreate(0,name,OBJ_RECTANGLE,0,profile_end-width,low+i*bin_size,
+                       profile_end,low+(i+1)*bin_size))
+         continue;
+      ObjectSetInteger(0,name,OBJPROP_COLOR,ColorToARGB(clrSteelBlue,90));
+      ObjectSetInteger(0,name,OBJPROP_FILL,true);
+      ObjectSetInteger(0,name,OBJPROP_BACK,true);
+      ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
+   }
+   DrawProfileLevel("VAH",profile_start,profile_end,low+(value_high+1)*bin_size,clrDeepSkyBlue,1);
+   DrawProfileLevel("POC",profile_start,profile_end,low+(poc+0.5)*bin_size,clrGold,2);
+   DrawProfileLevel("VAL",profile_start,profile_end,low+value_low*bin_size,clrDeepSkyBlue,1);
+   return true;
+}
+
+void UpdatePreviousDayProfile()
+{
+   const datetime current_session=BrokerDayStart(TimeCurrent());
+   if(current_session==0 || current_session==last_profile_session)
+      return;
+   DrawPreviousDayVolumeProfile(current_session);
+   last_profile_session=current_session;
+}
+
 int OnInit()
 {
-   if(!MathIsValidNumber(Body_to_wick_ratio) || Body_to_wick_ratio<0.0
-      || Body_to_wick_ratio>100.0 || Anchor_sweep_lookback<1)
+   if(!ParseBrokerDayStart())
    {
-      Print("Body_to_wick_ratio must be 0..100 and Anchor_sweep_lookback must be at least 1.");
+      Print("Broker_day_start_time must use HH:MI broker server time.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   if(!MathIsValidNumber(Body_to_wick_ratio) || Body_to_wick_ratio<0.0
+      || Body_to_wick_ratio>100.0 || Anchor_sweep_lookback<1
+      || !MathIsValidNumber(Value_area_percent) || Value_area_percent<=0.0 || Value_area_percent>100.0
+      || Volume_profile_bin_points<1 || Day_separator_count<1)
+   {
+      Print("Invalid signal or volume-profile inputs.");
       return INIT_PARAMETERS_INCORRECT;
    }
    signal_timeframe=(SIGNAL_TIMEFRAME==TF_M90 ? PERIOD_M1 : (ENUM_TIMEFRAMES)SIGNAL_TIMEFRAME);
@@ -296,6 +504,7 @@ int OnInit()
    history_warning_bar=0;
    buy_signal_count=0;
    sell_signal_count=0;
+   last_profile_session=0;
    const string panel=object_prefix+"Panel";
    ObjectCreate(0,panel,OBJ_RECTANGLE_LABEL,0,0,0);
    ObjectSetInteger(0,panel,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -337,6 +546,7 @@ int OnInit()
    }
    ShowDashboardWaiting();
    UpdateSignalCounter();
+   UpdatePreviousDayProfile();
    Print("Luminar-2 visualization ready: ",signal_label,
          ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%.");
    return INIT_SUCCEEDED;
@@ -665,6 +875,7 @@ void MaintainAreas(const MqlTick &tick)
 
 void OnTick()
 {
+   UpdatePreviousDayProfile();
    ProcessHigherTimeframe();
    MqlTick tick;
    if(!SymbolInfoTick(_Symbol,tick) || tick.bid<=0 || tick.ask<tick.bid) return;
