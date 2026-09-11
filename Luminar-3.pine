@@ -6,7 +6,7 @@
 
 //@version=5
 indicator("Luminar-3 (MT5 Port)", overlay=true,
-     max_boxes_count=5000, max_lines_count=5000, max_labels_count=5000)
+     max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 //------------ mirrored EA inputs ------------
 const color COL_R1 = #1E90FF
@@ -86,7 +86,8 @@ f_arrMin(a) =>
     m
 
 f_nyDateKey(t) =>
-    na(t) ? -1 : year(t, "America/New_York") * 10000 + month(t, "America/New_York") * 100 + dayofmonth(t, "America/New_York")
+    ts = int(t)
+    na(ts) ? -1 : year(ts, "America/New_York") * 10000 + month(ts, "America/New_York") * 100 + dayofmonth(ts, "America/New_York")
 
 // label size auto-selected from how many chart bars fit across the range
 f_barSize(rw_bars) =>
@@ -122,21 +123,21 @@ nIn   = array.from(i_r1im, i_r2im, i_r3im)
 cMain = array.from(c_r1, c_r2, c_r3)
 
 //------------ state ------------
-var float  g_mainRs  = na
-var float  g_mRe     = na
-var int    g_mainIdx = -1
+var int     g_mainRs  = na
+var int     g_mRe     = na
+var int     g_mainIdx = -1
 var array<float> g_mH = array.new_float()
 var array<float> g_mL = array.new_float()
 var array<float> g_mO = array.new_float()
 var array<float> g_mC = array.new_float()
 var array<float> g_mV = array.new_float()
 
-var float  g_inRs      = na
-var float  g_inRe      = na
-var int    g_inIdx     = -1
-var float  g_inMainRs  = na
-var float  g_inMainRe  = na
-var float  g_inLineEnd = na
+var int     g_inRs      = na
+var int     g_inRe      = na
+var int     g_inIdx     = -1
+var int     g_inMainRs  = na
+var int     g_inMainRe  = na
+var int     g_inLineEnd = na
 var array<float> g_iH = array.new_float()
 var array<float> g_iL = array.new_float()
 var array<float> g_iV = array.new_float()
@@ -167,11 +168,11 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0
         hi = f_arrMax(g_mH)
         lo = f_arrMin(g_mL)
         if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey)
-            col     = array.get(cMain, k)
+            color col   = array.get(cMain, k)
             mins    = array.get(nMain, k)
             lineEnd = rs + 4 * mins * 60000
             // box
-            box.new(rs, hi, re, lo, xloc.bar_time,
+            box.new(rs, hi, re, lo, xloc = xloc.bar_time,
                  border_color = col, bgcolor = color.new(col, i_opac), border_width = 1)
             // solid high/low + dotted mid lines
             line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid)
@@ -229,14 +230,14 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0
                 for q = 0 to levels - 1
                     vq = array.get(vols, q)
                     if vq > 0
-                        wq = math.max(1, math.round(i_vpw * 60000 * vq / vmax))
+                        wq = int(math.max(1.0, math.round(60000.0 * i_vpw * vq / vmax)))
                         t1 = rs - wq
                         blo = lo + q * step
                         bhi = lo + (q + 1) * step
                         bclr = (q == poc or q == va_lo or q == va_hi)
                              ? color.new(i_pocc, 35)
                              : (q >= va_lo and q <= va_hi ? color.new(i_vac, 35) : color.new(col, i_opac))
-                        box.new(t1, bhi, rs, blo, xloc.bar_time,
+                        box.new(t1, bhi, rs, blo, xloc = xloc.bar_time,
                              border_color = bclr, bgcolor = bclr, border_width = 1)
                         label.new(t1, (blo + bhi) / 2, str.tostring(int(math.round(vq))),
                              xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
@@ -277,9 +278,9 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0
                 s3 = "Delta " + str.tostring(int(math.round(math.abs(diff))))
                 label.new(rs, ybs, s1, xloc = xloc.bar_time, color = na,
                      textcolor = color.new(color.lime, 0), style = label.style_none, size = f_barSize(rwb))
-                label.new(rs + bw, ybs, s2, xloc = xloc.bar_time, color = na,
+                label.new(int(rs + bw), ybs, s2, xloc = xloc.bar_time, color = na,
                      textcolor = color.new(color.red, 0), style = label.style_none, size = f_barSize(rwb))
-                label.new(rs + 2 * bw, ybs, s3, xloc = xloc.bar_time, color = na,
+                label.new(int(rs + 2 * bw), ybs, s3, xloc = xloc.bar_time, color = na,
                      textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
                      style = label.style_none, size = f_barSize(rwb))
             // reset state
@@ -302,7 +303,7 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0
         loI = f_arrMin(g_iL)
         if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey)
             leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
-            box.new(rsI, hiI, reI, loI, xloc.bar_time,
+            box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
                  border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1)
             line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted)
             line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
