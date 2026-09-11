@@ -356,26 +356,32 @@ void DrawProfileLevel(const string suffix,const datetime start,const datetime en
    }
 }
 
-bool DrawPreviousDayVolumeProfile(const datetime current_session)
+bool FindPreviousBrokerSession(const datetime current_session,datetime &profile_start,datetime &profile_end)
 {
-   DrawDaySeparators(current_session);
-   datetime profile_end=current_session;
-   datetime profile_start=ShiftBrokerDay(profile_end,-1);
-   MqlRates bars[];
-   bool found=false;
+   profile_end=current_session;
+   profile_start=ShiftBrokerDay(profile_end,-1);
+   MqlRates probe[];
    for(int i=0;i<7;i++)
    {
       if(profile_start==0 || profile_end<=profile_start)
          return false;
-      if(CopyRates(_Symbol,PERIOD_M1,profile_start,profile_end-1,bars)>0)
-      {
-         found=true;
-         break;
-      }
+      if(CopyRates(_Symbol,PERIOD_M1,profile_start,profile_end-1,probe)>0)
+         return true;
       profile_end=profile_start;
       profile_start=ShiftBrokerDay(profile_end,-1);
    }
-   if(!found)
+   return false;
+}
+
+bool DrawPreviousDayVolumeProfile(const datetime current_session)
+{
+   DrawDaySeparators(current_session);
+   datetime profile_start=0;
+   datetime profile_end=0;
+   if(!FindPreviousBrokerSession(current_session,profile_start,profile_end))
+      return false;
+   MqlRates bars[];
+   if(CopyRates(_Symbol,PERIOD_M1,profile_start,profile_end-1,bars)<=0)
       return false;
 
    double low=1.0e100;
@@ -556,6 +562,7 @@ int OnInit()
    ShowDashboardWaiting();
    UpdateSignalCounter();
    UpdatePreviousDayProfile();
+   BackfillPreviousDaySignals();
    Print("Luminar-2 visualization ready: ",signal_label,
          ", wick threshold ",DoubleToString(Body_to_wick_ratio,2),"%.");
    return INIT_SUCCEEDED;
@@ -770,6 +777,85 @@ bool ReadPriorExtremes(const datetime anchor_time,double &prior_high,double &pri
    return true;
 }
 
+bool ReadHistoricalClosedCandles(const datetime confirmation,
+                                 MqlRates &source,MqlRates &mid,MqlRates &signal)
+{
+   if(SIGNAL_TIMEFRAME==TF_M90)
+      return ReadClosedCandles(TF_M90,confirmation,source,mid,signal);
+   const int shift=iBarShift(_Symbol,signal_timeframe,confirmation,true);
+   if(shift<0)
+      return false;
+   MqlRates bars[];
+   ArraySetAsSeries(bars,true);
+   if(CopyRates(_Symbol,signal_timeframe,shift,4,bars)!=4 || bars[0].time!=confirmation)
+      return false;
+   source=bars[3];
+   mid=bars[2];
+   signal=bars[1];
+   return true;
+}
+
+void BackfillSignalAt(const datetime confirmation,const datetime session_start,const datetime session_end)
+{
+   MqlRates source,mid,signal;
+   if(!ReadHistoricalClosedCandles(confirmation,source,mid,signal)
+      || signal.time<session_start || signal.time>=session_end)
+      return;
+   double source_prior_high=1.0e100;
+   double source_prior_low=-1.0e100;
+   double mid_prior_high=1.0e100;
+   double mid_prior_low=-1.0e100;
+   ReadPriorExtremes(source.time,source_prior_high,source_prior_low);
+   ReadPriorExtremes(mid.time,mid_prior_high,mid_prior_low);
+   int anchor_shift=0;
+   const EntrySignal entry=DetectEntry(source,mid,signal,Body_to_wick_ratio,
+                                       source_prior_high,source_prior_low,mid_prior_high,mid_prior_low,
+                                       anchor_shift);
+   if(entry==ENTRY_NONE)
+      return;
+   MqlRates anchor;
+   if(anchor_shift==3) anchor=source;
+   else anchor=mid;
+   if(!DrawSignal(entry,anchor,mid,signal,confirmation,anchor_shift,1))
+      return;
+   if(entry==ENTRY_BUY) buy_signal_count++;
+   else sell_signal_count++;
+}
+
+void BackfillPreviousDaySignals()
+{
+   const datetime current_session=BrokerDayStart(TimeCurrent());
+   datetime session_start=0;
+   datetime session_end=0;
+   if(!FindPreviousBrokerSession(current_session,session_start,session_end))
+      return;
+   if(SIGNAL_TIMEFRAME==TF_M90)
+   {
+      const int seconds=5400;
+      datetime signal_time=SyntheticBarStart(session_start,90);
+      if(signal_time<session_start)
+         signal_time+=(datetime)seconds;
+      for(;signal_time<session_end;signal_time+=(datetime)seconds)
+         BackfillSignalAt(signal_time+(datetime)seconds,session_start,session_end);
+   }
+   else
+   {
+      MqlRates bars[];
+      if(CopyRates(_Symbol,signal_timeframe,session_start,session_end-1,bars)<=0)
+         return;
+      for(int i=0;i<ArraySize(bars);i++)
+      {
+         const int signal_shift=iBarShift(_Symbol,signal_timeframe,bars[i].time,true);
+         if(signal_shift<=0)
+            continue;
+         const datetime confirmation=iTime(_Symbol,signal_timeframe,signal_shift-1);
+         if(confirmation!=0)
+            BackfillSignalAt(confirmation,session_start,session_end);
+      }
+   }
+   UpdateSignalCounter();
+}
+
 void ProcessHigherTimeframe()
 {
    const datetime now=TimeCurrent();
@@ -891,5 +977,8 @@ void OnTick()
    MaintainAreas(tick);
 }
 
-// Keep rectangles after removal/test completion for inspection.
-void OnDeinit(const int reason) {}
+void OnDeinit(const int reason)
+{
+   ObjectsDeleteAll(0,"Luminar_"+_Symbol+"_");
+   ObjectsDeleteAll(0,"DhanuFX_"+_Symbol+"_");
+}
