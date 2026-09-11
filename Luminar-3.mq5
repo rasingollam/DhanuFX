@@ -37,6 +37,8 @@ input int    Profile_Levels     =20;      // Volume profile price bins
 input int    Profile_MaxWidth   =60;      // Volume profile max width (minutes)
 input int    Profile_FontSize   =7;       // Volume profile text font size
 input color  Profile_TextColor  =clrWhite;  // Volume profile text color
+input bool   Show_BuySell_Volume=true;      // Buy/Sell volume + difference below main range
+input int    BuySell_FontSize   =9;         // Buy/Sell label font size
 
 string g_prefix;
 int    g_r1_h,g_r1_m,g_r1_ih,g_r1_im;
@@ -383,6 +385,71 @@ void DrawVolumeProfile(const string base,const color rc,
 }
 
 //+------------------------------------------------------------------+
+//| Buy/Sell volume + difference labels below a main range box       |
+//+------------------------------------------------------------------+
+int DrawBuySellVolume(const string base,const datetime rs,const datetime re)
+{
+   MqlRates bars[];
+   const int copied=CopyRates(_Symbol,PERIOD_M1,rs,re-1,bars);
+   const int minutes=(int)((re-rs)/60);
+   const int want=MathMin(InpMinM1Bars,minutes/2+1);
+   if(copied<want)
+      return 0;
+   double buy=0.0;
+   double sell=0.0;
+   double lo=1.0e100;
+   for(int b=0;b<copied;b++)
+   {
+      lo=MathMin(lo,bars[b].low);
+      const double v=bars[b].tick_volume;
+      if(bars[b].close>bars[b].open)
+         buy+=v;
+      else if(bars[b].close<bars[b].open)
+         sell+=v;
+      else
+      {
+         buy+=v*0.5;
+         sell+=v*0.5;
+      }
+   }
+   if(lo>=1.0e99)
+      return 0;
+   const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
+   const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
+   const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   const double per_px=(pmax>pmin && hpix>0.0) ? (pmax-pmin)/hpix : _Point*20.0;
+   const double gap=(double)BuySell_FontSize*per_px*1.35;
+   const long bv=(long)MathRound(buy);
+   const long sv=(long)MathRound(sell);
+   const double diff=buy-sell;
+   const string dTxt=(diff>=0?"Diff  +":"Diff  -")+
+                     IntegerToString((long)MathRound(MathAbs(diff)));
+   struct P { string nm; double price; string txt; color clr; };
+   P items[3];
+   items[0].nm=base+"_BSB"; items[0].price=lo-gap;
+   items[0].txt="Buy  "+IntegerToString(bv); items[0].clr=clrLimeGreen;
+   items[1].nm=base+"_BSS"; items[1].price=lo-2.0*gap;
+   items[1].txt="Sell "+IntegerToString(sv); items[1].clr=clrTomato;
+   items[2].nm=base+"_BSD"; items[2].price=lo-3.0*gap;
+   items[2].txt=dTxt; items[2].clr=Profile_TextColor;
+   int n=0;
+   for(int k=0;k<3;k++)
+   {
+      if(!ObjectCreate(0,items[k].nm,OBJ_TEXT,0,rs,items[k].price))
+         continue;
+      ObjectSetString(0,items[k].nm,OBJPROP_TEXT,items[k].txt);
+      ObjectSetInteger(0,items[k].nm,OBJPROP_COLOR,items[k].clr);
+      ObjectSetInteger(0,items[k].nm,OBJPROP_FONTSIZE,BuySell_FontSize);
+      ObjectSetInteger(0,items[k].nm,OBJPROP_ANCHOR,ANCHOR_LEFT);
+      ObjectSetInteger(0,items[k].nm,OBJPROP_BACK,false);
+      ObjectSetInteger(0,items[k].nm,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,items[k].nm,OBJPROP_HIDDEN,false);
+      n++;
+   }
+   return n;
+}
+
+//+------------------------------------------------------------------+
 //| Draw one range + its inside range for a given NY date            |
 //+------------------------------------------------------------------+
 void DrawRangePair(const int cy,const int cm,const int cd,
@@ -402,6 +469,8 @@ void DrawRangePair(const int cy,const int cm,const int cd,
    if(re<=now_server && re>=vstart && rs<vend)
    {
       DrawVolumeProfile(g_prefix+"Y"+ybase,rc,rs,re);
+      if(Show_BuySell_Volume)
+         created+=DrawBuySellVolume(g_prefix+"Y"+ybase,rs,re);
       created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,tag,
                                 rc,clrWhite,true,rs,re,line_end);
    }
