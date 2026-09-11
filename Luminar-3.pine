@@ -1,0 +1,263 @@
+// Luminar-3 — Pine Script port of the MT5 range EA
+// Run on an intraday chart, ideally 1-minute, so the aggregation matches the MQL5 M1 logic.
+// NY time is computed by TradingView via the "America/New_York" exchange timezone (DST handled
+// automatically), so there is no broker GMT offset input here.
+
+//@version=5
+indicator("Luminar-3 (MT5 Port)", overlay=true,
+     max_boxes_count=5000, max_lines_count=5000, max_labels_count=5000)
+
+//------------ inputs (mirror the MQL5 inputs) ------------
+const color COL_R1 = #1E90FF
+const color COL_R2 = #FFD700
+const color COL_R3 = #00FF00
+const color COL_INS = #A020F0
+
+i_r1s  = input.string("09:00", "Range 1 start (NY)")
+i_r1m  = input.int(90,      "Range 1 length (min)", minval = 1, maxval = 1440)
+i_r1i  = input.string("09:30", "Range 1 inside start (NY)")
+i_r1im = input.int(15,      "Range 1 inside length (min)", minval = 1, maxval = 1440)
+c_r1   = input.color(COL_R1, "Range 1 box color", group = "Range 1")
+
+i_r2s  = input.string("01:30", "Range 2 start (NY)")
+i_r2m  = input.int(90,      "Range 2 length (min)", minval = 1, maxval = 1440)
+i_r2i  = input.string("01:30", "Range 2 inside start (NY)")
+i_r2im = input.int(15,      "Range 2 inside length (min)", minval = 1, maxval = 1440)
+c_r2   = input.color(COL_R2, "Range 2 box color", group = "Range 2")
+
+i_r3s  = input.string("21:00", "Range 3 start (NY)")
+i_r3m  = input.int(90,      "Range 3 length (min)", minval = 1, maxval = 1440)
+i_r3i  = input.string("21:00", "Range 3 inside start (NY)")
+i_r3im = input.int(15,      "Range 3 inside length (min)", minval = 1, maxval = 1440)
+c_r3   = input.color(COL_R3, "Range 3 box color", group = "Range 3")
+
+c_inside  = input.color(COL_INS, "Inside box color", group = "Common")
+i_opac    = input.int(60,     "Box opacity %",    minval = 0,    maxval = 95, group = "Common")
+c_mid1    = input.color(color.white, "Range mid line color", group = "Common")
+c_mid2    = input.color(color.orange, "Inside mid line color", group = "Common")
+i_showPrev= input.bool(true,  "Show previous ranges (OFF = today only)", group = "Common")
+i_vplvls  = input.int(20,     "Volume profile price bins", minval = 2, group = "Volume Profile")
+i_vpw     = input.int(60,     "Volume profile max width (min)", minval = 5, group = "Volume Profile")
+i_vptxt   = input.color(color.white, "Volume profile text color", group = "Volume Profile")
+i_vpfs    = input.string("small", "Volume profile text size",
+     options = ["tiny", "small", "normal", "large"], group = "Volume Profile")
+
+//------------ helpers ------------
+f_pad2(x) =>
+    x < 10 ? "0" + str.tostring(x) : str.tostring(x)
+
+f_parse(s) =>
+    p = str.split(s, ":")
+    ok = array.size(p) >= 2
+    h = ok ? str.tonumber(array.get(p, 0)) : na
+    m = ok ? str.tonumber(array.get(p, 1)) : na
+    [h, m]
+
+f_sess(h, m) =>
+    ms = m + 1
+    hh = h + math.floor(ms / 60)
+    hh := hh % 24
+    mm = ms % 60
+    f_pad2(h) + f_pad2(m) + "-" + f_pad2(hh) + f_pad2(mm)
+
+// NY open (unix) of the bar whose NY clock equals hh:mm
+f_nyopen(hh, mm) =>
+    time(timeframe.period, f_sess(hh, mm), "America/New_York")
+
+f_arrMax(a) =>
+    float m = na
+    if array.size(a) > 0
+        for i = 0 to array.size(a) - 1
+            v = array.get(a, i)
+            if na(m) or v > m
+                m := v
+    m
+
+f_arrMin(a) =>
+    float m = na
+    if array.size(a) > 0
+        for i = 0 to array.size(a) - 1
+            v = array.get(a, i)
+            if na(m) or v < m
+                m := v
+    m
+
+f_nyDateKey(t) =>
+    na(t) ? -1 : year(t, "America/New_York") * 10000 + month(t, "America/New_York") * 100 + dayofmonth(t, "America/New_York")
+
+f_fontSize() =>
+    size s = size.small
+    if i_vpfs == "tiny"
+        s := size.tiny
+    else if i_vpfs == "normal"
+        s := size.normal
+    else if i_vpfs == "large"
+        s := size.large
+    s
+
+//------------ range configuration ------------
+[rh1, rm1]   = f_parse(i_r1s)
+[rih1, rim1] = f_parse(i_r1i)
+[rh2, rm2]   = f_parse(i_r2s)
+[rih2, rim2] = f_parse(i_r2i)
+[rh3, rm3]   = f_parse(i_r3s)
+[rih3, rim3] = f_parse(i_r3i)
+
+//------------ per-bar detection ------------
+rs1  = f_nyopen(rh1, rm1)
+ins1 = f_nyopen(rih1, rim1)
+rs2  = f_nyopen(rh2, rm2)
+ins2 = f_nyopen(rih2, rim2)
+rs3  = f_nyopen(rh3, rm3)
+ins3 = f_nyopen(rih3, rim3)
+
+rS    = array.from(rs1, rs2, rs3)
+rIS   = array.from(ins1, ins2, ins3)
+nMain = array.from(i_r1m, i_r2m, i_r3m)
+nIn   = array.from(i_r1im, i_r2im, i_r3im)
+cMain = array.from(c_r1, c_r2, c_r3)
+
+//------------ state ------------
+var float  g_mainRs  = na    // active main window start (unix)
+var float  g_mRe     = na    // active main window end
+var int    g_mainIdx = -1    // active main range index
+var array<float> g_mH = array.new_float()
+var array<float> g_mL = array.new_float()
+var array<float> g_mV = array.new_float()
+
+var float  g_inRs    = na
+var float  g_inRe    = na
+var int    g_inIdx   = -1
+var float  g_inLineEnd = na
+var array<float> g_iH = array.new_float()
+var array<float> g_iL = array.new_float()
+var array<float> g_iV = array.new_float()
+
+bt   = time           // bar open (unix)
+prev = time[1]
+todayKey = f_nyDateKey(time(timeframe.period, "0000-2359", "America/New_York"))
+
+//---- which main window is running on this bar ----
+actM = -1
+for k = 0 to 2
+    sk = array.get(rS, k)
+    if not na(sk) and bt >= sk and bt < sk + array.get(nMain, k) * 60
+        actM := k
+
+actI = -1
+for k = 0 to 2
+    sk = array.get(rIS, k)
+    if not na(sk) and bt >= sk and bt < sk + array.get(nIn, k) * 60
+        actI := k
+
+//=== 1) COMPLETIONS (draw finished ranges) =================
+if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0
+    if prev >= g_mainRs and prev < g_mRe and bt >= g_mRe
+        k   = g_mainIdx
+        rs  = g_mainRs
+        re  = g_mRe
+        hi  = f_arrMax(g_mH)
+        lo  = f_arrMin(g_mL)
+        if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey)
+            col    = array.get(cMain, k)
+            mins   = array.get(nMain, k)
+            lineEnd = rs + 4 * mins * 60
+            // main box
+            box.new(rs, hi, re, lo, xloc.bar_time,
+                 border_color = col, bgcolor = color.new(col, i_opac), border_width = 1)
+            // solid high / low lines + dotted mid line
+            line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid)
+            line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = line.style_solid)
+            line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
+                 color = c_mid1, style = line.style_dotted)
+            // volume profile
+            step = (hi - lo) / i_vplvls
+            vols = array.new_float(i_vplvls, 0.0)
+            if array.size(g_mH) > 0
+                for b = 0 to array.size(g_mH) - 1
+                    h1 = array.get(g_mH, b)
+                    l1 = array.get(g_mL, b)
+                    v1 = array.get(g_mV, b)
+                    sp = h1 - l1
+                    for q = 0 to i_vplvls - 1
+                        blo = lo + q * step
+                        bhi = lo + (q + 1) * step
+                        ol  = math.min(h1, bhi) - math.max(l1, blo)
+                        if ol > 0
+                            w = sp > 0 ? ol / sp : 1.0
+                            array.set(vols, q, array.get(vols, q) + v1 * w)
+            vmax = f_arrMax(vols)
+            if not na(vmax) and vmax > 0
+                for q = 0 to i_vplvls - 1
+                    vq = array.get(vols, q)
+                    if vq > 0
+                        wq = math.max(1, math.round(i_vpw * 60 * vq / vmax))
+                        t1 = rs - wq
+                        blo = lo + q * step
+                        bhi = lo + (q + 1) * step
+                        box.new(t1, bhi, rs, blo, xloc.bar_time,
+                             border_color = color.new(col, i_opac), bgcolor = color.new(col, i_opac), border_width = 1)
+                        label.new(t1, (blo + bhi) / 2, str.tostring(int(math.round(vq))),
+                             xloc = xloc.bar_time, color = color(na), textcolor = i_vptxt,
+                             style = label.style_none, size = f_fontSize())
+        // reset state
+        g_mainRs  := na
+        g_mRe     := na
+        g_mainIdx := -1
+        array.clear(g_mH)
+        array.clear(g_mL)
+        array.clear(g_mV)
+
+//=== 2) INSIDE completions (independent of main range) ====
+if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0
+    if prev >= g_inRs and prev < g_inRe and bt >= g_inRe
+        rsI = g_inRs
+        reI = g_inRe
+        hiI = f_arrMax(g_iH)
+        loI = f_arrMin(g_iL)
+        if not na(hiI) and hiI > loI and (i_showPrev or f_nyDateKey(rsI) == todayKey)
+            leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60 : g_inLineEnd
+            box.new(rsI, hiI, reI, loI, xloc.bar_time,
+                 border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1)
+            line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted)
+            line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
+                 color = c_mid2, style = line.style_dotted)
+            line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = line.style_dotted)
+        g_inRs  := na
+        g_inRe  := na
+        g_inIdx := -1
+        array.clear(g_iH)
+        array.clear(g_iL)
+        array.clear(g_iV)
+
+//=== 3) STARTS / RESETS =================================
+if actM >= 0
+    if array.get(rS, actM) != g_mainRs
+        g_mainRs  := array.get(rS, actM)
+        g_mRe     := g_mainRs + array.get(nMain, actM) * 60
+        g_mainIdx := actM
+        array.clear(g_mH)
+        array.clear(g_mL)
+        array.clear(g_mV)
+if actI >= 0
+    if array.get(rIS, actI) != g_inRs
+        g_inRs  := array.get(rIS, actI)
+        g_inRe  := g_inRs + array.get(nIn, actI) * 60
+        g_inIdx := actI
+        if not na(g_mainRs) and g_mainIdx == actI
+            g_inLineEnd := g_mainRs + 4 * array.get(nMain, actI) * 60
+        else
+            g_inLineEnd := na
+        array.clear(g_iH)
+        array.clear(g_iL)
+        array.clear(g_iV)
+
+//=== 4) ACCUMULATE current bar into active windows ======
+if actM >= 0
+    array.push(g_mH, high)
+    array.push(g_mL, low)
+    array.push(g_mV, volume)
+if actI >= 0
+    array.push(g_iH, high)
+    array.push(g_iL, low)
+    array.push(g_iV, volume)
