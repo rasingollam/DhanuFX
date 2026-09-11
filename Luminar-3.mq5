@@ -41,7 +41,6 @@ input int    Value_Area_Pct     =70;      // Value area volume % (built around P
 input color  Value_Area_Color   =clrWhite; // Value area bin + VAH/VAL label color
 input color  POC_Color          =clrYellow;// Point of control bin + label color
 input bool   Show_BuySell_Volume=true;      // Buy/Sell volume + difference below main range
-input int    BuySell_FontSize   =9;         // Buy/Sell label font size
 
 string g_prefix;
 int    g_r1_h,g_r1_m,g_r1_ih,g_r1_im;
@@ -379,7 +378,8 @@ if(vmax<=0.0)
       const int w=MathMax(1,(int)MathRound((double)max_sec*vol[k]/vmax));
       const datetime t1=rs-(datetime)w;
       const string nm=base+"_VP"+IntegerToString(k);
-      const color binclr=(k==poc?poc_fill:(k>=va_lo && k<=va_hi?va_fill:fill));
+      const color binclr=(k==poc || k==va_lo || k==va_hi ? poc_fill
+                    : (k>=va_lo && k<=va_hi ? va_fill : fill));
       if(ObjectCreate(0,nm,OBJ_RECTANGLE,0,t1,bin_lo[k],rs,bin_hi[k]))
       {
          ObjectSetInteger(0,nm,OBJPROP_COLOR,binclr);
@@ -414,15 +414,22 @@ if(vmax<=0.0)
    const double vahi=bin_hi[va_hi];
    const double valo=bin_lo[va_lo];
    const double pocp=(bin_lo[poc]+bin_hi[poc])/2.0;
-   const datetime xL=rs-(datetime)max_sec;
+   datetime vs=0,ve=0;
+   double cspan=60.0;
+   if(GetVisibleRange(vs,ve) && ve>vs)
+      cspan=(double)(ve-vs);
+   const long xw=ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   const double sec_per_px=(xw>0 ? cspan/(double)xw : 60.0);
+   const double shift=(double)(Profile_FontSize+1)*0.6*sec_per_px*10.0;
+   const datetime xL=rs-(datetime)max_sec-(datetime)shift;
    struct LP { string nm; double price; string txt; color clr; };
    LP lev[3];
    lev[0].nm=base+"_POC"; lev[0].price=pocp;
-   lev[0].txt="POC "+DoubleToString(pocp,_Digits); lev[0].clr=POC_Color;
+   lev[0].txt="POC";  lev[0].clr=POC_Color;
    lev[1].nm=base+"_VAH"; lev[1].price=vahi;
-   lev[1].txt="VAH "+DoubleToString(vahi,_Digits); lev[1].clr=Value_Area_Color;
+   lev[1].txt="VAH";  lev[1].clr=Value_Area_Color;
    lev[2].nm=base+"_VAL"; lev[2].price=valo;
-   lev[2].txt="VAL "+DoubleToString(valo,_Digits); lev[2].clr=Value_Area_Color;
+   lev[2].txt="VAL";  lev[2].clr=Value_Area_Color;
    for(int k=0;k<3;k++)
    {
       if(!ObjectCreate(0,lev[k].nm,OBJ_TEXT,0,xL,lev[k].price))
@@ -438,7 +445,7 @@ if(vmax<=0.0)
 }
 
 //+------------------------------------------------------------------+
-//| Buy/Sell volume + difference on a single line below main range   |
+//| Buy/Sell volume + difference spread across the main range width  |
 //+------------------------------------------------------------------+
 int DrawBuySellVolume(const string base,const datetime rs,const datetime re)
 {
@@ -472,31 +479,36 @@ int DrawBuySellVolume(const string base,const datetime rs,const datetime re)
    const long   bv=(long)MathRound(buy);
    const long   sv=(long)MathRound(sell);
    const double diff=buy-sell;
-   const string buyTxt ="Buy  "+IntegerToString(bv)+"  |  ";
-   const string sellTxt="Sell "+IntegerToString(sv)+"  |  ";
+   const string buyTxt ="Buy "+IntegerToString(bv);
+   const string sellTxt="Sell "+IntegerToString(sv);
    const string diffTxt="Delta "+IntegerToString((long)MathRound(MathAbs(diff)));
-   const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
-   const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
-   const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   const double price_per_px=(pmax>pmin && hpix>0.0) ? (pmax-pmin)/hpix : _Point*20.0;
-   const double y=hi+(double)BuySell_FontSize*1.8*price_per_px;
+   const int maxLen=MathMax(StringLen(buyTxt),MathMax(StringLen(sellTxt),StringLen(diffTxt)));
+   const double char_px_pt=0.55*96.0/72.0;
    datetime vstart=0,vend=0;
    double cspan=60.0;
    if(GetVisibleRange(vstart,vend) && vend>vstart)
       cspan=(double)(vend-vstart);
    const long xpix=ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    const double sec_per_px=(xpix>0 ? cspan/(double)xpix : 60.0);
-   const double char_sec=BuySell_FontSize*0.6*sec_per_px;
-   const datetime x0=rs;
-   const datetime x1=rs+(datetime)(StringLen(buyTxt)*char_sec);
-   const datetime x2=rs+(datetime)((StringLen(buyTxt)+StringLen(sellTxt))*char_sec);
+   const double col_sec=((double)(re-rs))/3.0;
+   int fs=(int)MathFloor(col_sec/(char_px_pt*(maxLen+2)*sec_per_px));
+   if(fs<6)
+      fs=6;
+   if(fs>16)
+      fs=16;
+   const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
+   const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
+   const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   const double price_per_px=(pmax>pmin && hpix>0.0) ? (pmax-pmin)/hpix : _Point*20.0;
+   const double y=hi+(double)fs*1.8*price_per_px;
+   const double step=((double)(re-rs))/3.0;
    struct P { string nm; datetime x; double price; string txt; color clr; };
    P items[3];
-   items[0].nm=base+"_BSB"; items[0].x=x0; items[0].price=y;
+   items[0].nm=base+"_BSB"; items[0].x=rs; items[0].price=y;
    items[0].txt=buyTxt;  items[0].clr=clrLimeGreen;
-   items[1].nm=base+"_BSS"; items[1].x=x1; items[1].price=y;
+   items[1].nm=base+"_BSS"; items[1].x=rs+(datetime)step; items[1].price=y;
    items[1].txt=sellTxt; items[1].clr=clrTomato;
-   items[2].nm=base+"_BSD"; items[2].x=x2; items[2].price=y;
+   items[2].nm=base+"_BSD"; items[2].x=rs+(datetime)(2.0*step); items[2].price=y;
    items[2].txt=diffTxt; items[2].clr=(diff>=0?clrLimeGreen:clrTomato);
    int n=0;
    for(int k=0;k<3;k++)
@@ -505,7 +517,7 @@ int DrawBuySellVolume(const string base,const datetime rs,const datetime re)
          continue;
       ObjectSetString(0,items[k].nm,OBJPROP_TEXT,items[k].txt);
       ObjectSetInteger(0,items[k].nm,OBJPROP_COLOR,items[k].clr);
-      ObjectSetInteger(0,items[k].nm,OBJPROP_FONTSIZE,BuySell_FontSize);
+      ObjectSetInteger(0,items[k].nm,OBJPROP_FONTSIZE,fs);
       ObjectSetInteger(0,items[k].nm,OBJPROP_ANCHOR,ANCHOR_LEFT);
       ObjectSetInteger(0,items[k].nm,OBJPROP_BACK,false);
       ObjectSetInteger(0,items[k].nm,OBJPROP_SELECTABLE,false);
