@@ -228,17 +228,19 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                         label.new(t1 - 2 * 60000, (blo + bhi) / 2, str.tostring(int(math.round(vq))),
                              xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
                              style = label.style_none, size = size.tiny)
-            // POC / VAH / VAL labels (word only), left of the profile
-            vahi = lo + va_hi * step + step
-            valo = lo + va_lo * step
-            pocp = lo + poc * step + step / 2
-            xL   = rs - i_vpw * 60000 - 16 * 60000
-            label.new(xL, pocp, "POC", xloc = xloc.bar_time, color = na,
-                 textcolor = i_pocc, style = label.style_none, size = size.small)
-            label.new(xL, vahi, "VAH", xloc = xloc.bar_time, color = na,
-                 textcolor = i_vac, style = label.style_none, size = size.small)
-            label.new(xL, valo, "VAL", xloc = xloc.bar_time, color = na,
-                 textcolor = i_vac, style = label.style_none, size = size.small)
+                    // POC / VAH / VAL word labels centered inside their own bin
+                    if q == poc
+                        label.new(rs - 3 * 60000, (blo + bhi) / 2, "POC",
+                             xloc = xloc.bar_time, color = na, textcolor = i_pocc,
+                             style = label.style_none, size = size.small)
+                    if q == va_hi
+                        label.new(rs - 3 * 60000, (blo + bhi) / 2, "VAH",
+                             xloc = xloc.bar_time, color = na, textcolor = i_vac,
+                             style = label.style_none, size = size.small)
+                    if q == va_lo
+                        label.new(rs - 3 * 60000, (blo + bhi) / 2, "VAL",
+                             xloc = xloc.bar_time, color = na, textcolor = i_vac,
+                             style = label.style_none, size = size.small)
         // ---- buy / sell / delta spread across range top ----
         if i_bsVol
             buys = 0.0
