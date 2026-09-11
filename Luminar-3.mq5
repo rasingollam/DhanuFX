@@ -395,17 +395,19 @@ void DrawRangePair(const int cy,const int cm,const int cd,
 {
    const datetime rs=NyTimeChart(cy,cm,cd,rh,rm);
    const datetime re=rs+(datetime)(r_mins*60);
-   if(re>now_server || re<vstart || rs>=vend)
-      return;
    const string tag=IntegerToString(rh)+StringFormat("%02d",rm);
    const string ybase=IntegerToString(YMD(cy,cm,cd))+"_"+tag;
    const datetime line_end=rs+(datetime)(4*r_mins*60);
-   DrawVolumeProfile(g_prefix+"Y"+ybase,rc,rs,re);
-   created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,tag,
-                             rc,clrWhite,true,rs,re,line_end);
+
+   if(re<=now_server && re>=vstart && rs<vend)
+   {
+      DrawVolumeProfile(g_prefix+"Y"+ybase,rc,rs,re);
+      created+=DrawRangeObjects(g_prefix+ybase,g_prefix+"Y"+ybase,tag,
+                                rc,clrWhite,true,rs,re,line_end);
+   }
    const datetime is_=NyTimeChart(cy,cm,cd,ih,im);
    const datetime ie_=is_+(datetime)(i_mins*60);
-   if(ie_<=now_server && is_>=rs && ie_<=re)
+   if(ie_<=now_server && ie_>=vstart && is_<vend && is_>=rs && ie_<=re)
       created+=DrawRangeObjects(g_prefix+ybase+"_IN",g_prefix+"Y"+ybase+"_IN",tag+"IN",
                                 Inside_color,clrOrange,false,is_,ie_,line_end);
 }
