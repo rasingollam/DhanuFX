@@ -1,7 +1,6 @@
 // Luminar-3 — Pine Script port of the MT5 range EA (v3)
 // Run on an intraday chart; use M1 so aggregation matches the MQL5 M1 logic.
-// NY time is computed by TradingView via the "America/New_York" exchange timezone
-// (DST handled automatically), so there is no broker GMT offset input here.
+// NY time is computed from the chart bar's NY hour/minute (DST handled automatically).
 // NOTE: Pine time is in milliseconds; all window/length arithmetic uses ms.
 
 //@version=5
@@ -46,26 +45,12 @@ i_vac     = input.color(color.white, "Value area bin + VAH/VAL label color", gro
 i_pocc    = input.color(color.yellow, "Point of control bin + label color", group = "Volume Profile")
 
 //------------ helpers ------------
-f_pad2(x) =>
-    x < 10 ? "0" + str.tostring(x) : str.tostring(x)
-
 f_parse(s) =>
     p = str.split(s, ":")
     ok = array.size(p) >= 2
     h = ok ? str.tonumber(array.get(p, 0)) : na
     m = ok ? str.tonumber(array.get(p, 1)) : na
     [h, m]
-
-f_sess(h, m) =>
-    ms = m + 1
-    hh = h + math.floor(ms / 60)
-    hh := hh % 24
-    mm = ms % 60
-    f_pad2(h) + f_pad2(m) + "-" + f_pad2(hh) + f_pad2(mm)
-
-// NY open (ms) of the bar whose NY clock equals hh:mm
-f_nyopen(hh, mm) =>
-    time(timeframe.period, f_sess(hh, mm), "America/New_York")
 
 f_arrMax(a) =>
     float m = na
@@ -108,16 +93,18 @@ f_barSize(rw_bars) =>
 [rh3, rm3]   = f_parse(i_r3s)
 [rih3, rim3] = f_parse(i_r3i)
 
-//------------ per-bar detection (ms) ------------
-rs1  = f_nyopen(rh1, rm1)
-ins1 = f_nyopen(rih1, rim1)
-rs2  = f_nyopen(rh2, rm2)
-ins2 = f_nyopen(rih2, rim2)
-rs3  = f_nyopen(rh3, rm3)
-ins3 = f_nyopen(rih3, rim3)
+//------------ per-bar NY detection (start minute match) ------------
+nyh = hour(time, "America/New_York")
+nym = minute(time, "America/New_York")
 
-rS    = array.from(rs1, rs2, rs3)
-rIS   = array.from(ins1, ins2, ins3)
+rS    = array.from(
+     nyh == rh1 and nym == rm1 ? time : na,
+     nyh == rh2 and nym == rm2 ? time : na,
+     nyh == rh3 and nym == rm3 ? time : na)
+rIS   = array.from(
+     nyh == rih1 and nym == rim1 ? time : na,
+     nyh == rih2 and nym == rim2 ? time : na,
+     nyh == rih3 and nym == rim3 ? time : na)
 nMain = array.from(i_r1m, i_r2m, i_r3m)
 nIn   = array.from(i_r1im, i_r2im, i_r3im)
 cMain = array.from(c_r1, c_r2, c_r3)
@@ -138,212 +125,212 @@ var int     g_inIdx     = -1
 var int     g_inMainRs  = na
 var int     g_inMainRe  = na
 var int     g_inLineEnd = na
+var array<int>  g_lastRs = array.new_int(3, 0)
 var array<float> g_iH = array.new_float()
 var array<float> g_iL = array.new_float()
 var array<float> g_iV = array.new_float()
 
-bt   = time           // bar open (ms)
-prev = time[1]        // previous bar open (ms)
-todayKey = f_nyDateKey(time(timeframe.period, "0000-2359", "America/New_York"))
+bt   = time             // bar open (ms) = window start when NY minute matches
+todayKey = f_nyDateKey(bt)
 
-//---- which main window runs on this bar ----
-actM = -1
+//---- which range starts on this bar (only one can match a minute) ----
+int foundM = -1
 for k = 0 to 2
     sk = array.get(rS, k)
-    if not na(sk) and bt >= sk and bt < sk + array.get(nMain, k) * 60000
-        actM := k
-
-actI = -1
+    if not na(sk) and sk == bt
+        foundM := k
+int foundI = -1
 for k = 0 to 2
     sk = array.get(rIS, k)
-    if not na(sk) and bt >= sk and bt < sk + array.get(nIn, k) * 60000
-        actI := k
+    if not na(sk) and sk == bt
+        foundI := k
 
-//=== 1) MAIN COMPLETION (draw full range box + lines + volume profile) ==
-if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0
-    if prev >= g_mainRs and prev < g_mRe and bt >= g_mRe
-        k = g_mainIdx
-        rs = g_mainRs
-        re = g_mRe
-        hi = f_arrMax(g_mH)
-        lo = f_arrMin(g_mL)
-        if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey)
-            color col   = array.get(cMain, k)
-            mins    = array.get(nMain, k)
-            lineEnd = rs + 4 * mins * 60000
-            // box
-            box.new(rs, hi, re, lo, xloc = xloc.bar_time,
-                 border_color = col, bgcolor = color.new(col, i_opac), border_width = 1)
-            // solid high/low + dotted mid lines
-            line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid)
-            line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = line.style_solid)
-            line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
-                 color = c_mid1, style = line.style_dotted)
-            // ---- volume profile (overlap-weighted bins) ----
-            levels = math.max(2, i_vplvls)
-            step   = (hi - lo) / levels
-            vols   = array.new_float(levels, 0.0)
-            if array.size(g_mH) > 0
-                for b = 0 to array.size(g_mH) - 1
-                    h1 = array.get(g_mH, b)
-                    l1 = array.get(g_mL, b)
-                    v1 = array.get(g_mV, b)
-                    sp = h1 - l1
-                    for q = 0 to levels - 1
-                        blo = lo + q * step
-                        bhi = lo + (q + 1) * step
-                        ol  = math.min(h1, bhi) - math.max(l1, blo)
-                        if ol > 0
-                            w = sp > 0 ? ol / sp : 1.0
-                            array.set(vols, q, array.get(vols, q) + v1 * w)
-            vmax = f_arrMax(vols)
-            if not na(vmax) and vmax > 0
-                // POC + value area expansion
-                total = 0.0
-                for q = 0 to levels - 1
-                    total += array.get(vols, q)
-                int poc = 0
-                for q = 1 to levels - 1
-                    if array.get(vols, q) > array.get(vols, poc)
-                        poc := q
-                va_lo = poc
-                va_hi = poc
-                if total > 0
-                    varea = array.get(vols, poc)
-                    tar = math.min(1.0, i_vapct / 100.0) * total
-                    while varea < tar and (va_lo > 0 or va_hi < levels - 1)
-                        above = va_hi < levels - 1 ? array.get(vols, va_hi + 1) : -1.0
-                        below = va_lo > 0         ? array.get(vols, va_lo - 1) : -1.0
-                        if above < 0
-                            va_lo -= 1
-                            varea += array.get(vols, va_lo)
-                        else if below < 0
-                            va_hi += 1
-                            varea += array.get(vols, va_hi)
-                        else if above >= below
-                            va_hi += 1
-                            varea += array.get(vols, va_hi)
-                        else
-                            va_lo -= 1
-                            varea += array.get(vols, va_lo)
-                // draw bins (colored) + per-bin volume values
-                for q = 0 to levels - 1
-                    vq = array.get(vols, q)
-                    if vq > 0
-                        wq = int(math.max(1.0, math.round(60000.0 * i_vpw * vq / vmax)))
-                        t1 = rs - wq
-                        blo = lo + q * step
-                        bhi = lo + (q + 1) * step
-                        bclr = (q == poc or q == va_lo or q == va_hi)
-                             ? color.new(i_pocc, 35)
-                             : (q >= va_lo and q <= va_hi ? color.new(i_vac, 35) : color.new(col, i_opac))
-                        box.new(t1, bhi, rs, blo, xloc = xloc.bar_time,
-                             border_color = bclr, bgcolor = bclr, border_width = 1)
-                        label.new(t1, (blo + bhi) / 2, str.tostring(int(math.round(vq))),
-                             xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
-                             style = label.style_none, size = size.tiny)
-                // POC / VAH / VAL labels (word only), left of the profile
-                vahi = lo + va_hi * step + step
-                valo = lo + va_lo * step
-                pocp = lo + poc * step + step / 2
-                xL   = rs - i_vpw * 60000 - 10 * 60000
-                label.new(xL, pocp, "POC", xloc = xloc.bar_time, color = na,
-                     textcolor = i_pocc, style = label.style_none, size = size.small)
-                label.new(xL, vahi, "VAH", xloc = xloc.bar_time, color = na,
-                     textcolor = i_vac, style = label.style_none, size = size.small)
-                label.new(xL, valo, "VAL", xloc = xloc.bar_time, color = na,
-                     textcolor = i_vac, style = label.style_none, size = size.small)
-            // ---- buy / sell / delta spread across range top ----
-            if i_bsVol
-                buys = 0.0
-                sells = 0.0
-                if array.size(g_mO) > 0
-                    for b = 0 to array.size(g_mO) - 1
-                        o = array.get(g_mO, b)
-                        c = array.get(g_mC, b)
-                        v = array.get(g_mV, b)
-                        if c > o
-                            buys += v
-                        else if c < o
-                            sells += v
-                        else
-                            buys += v / 2
-                            sells += v / 2
-                diff = buys - sells
-                bw = (re - rs) / 3
-                ybs = hi + (hi - lo) * 0.03
-                rwb = (re - rs) / nz(time - time[1], 60000)
-                s1 = str.tostring(int(math.round(buys)))
-                s2 = str.tostring(int(math.round(sells)))
-                s3 = "Delta " + str.tostring(int(math.round(math.abs(diff))))
-                label.new(rs, ybs, s1, xloc = xloc.bar_time, color = na,
-                     textcolor = color.new(color.lime, 0), style = label.style_none, size = f_barSize(rwb))
-                label.new(int(rs + bw), ybs, s2, xloc = xloc.bar_time, color = na,
-                     textcolor = color.new(color.red, 0), style = label.style_none, size = f_barSize(rwb))
-                label.new(int(rs + 2 * bw), ybs, s3, xloc = xloc.bar_time, color = na,
-                     textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
-                     style = label.style_none, size = f_barSize(rwb))
-            // reset state
-            g_mainRs  := na
-            g_mRe     := na
-            g_mainIdx := -1
-            array.clear(g_mH)
-            array.clear(g_mL)
-            array.clear(g_mO)
-            array.clear(g_mC)
-            array.clear(g_mV)
+//=== 1) MAIN COMPLETION (window ended on/after this bar) ==============
+if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
+    k = g_mainIdx
+    rs = g_mainRs
+    re = g_mRe
+    hi = f_arrMax(g_mH)
+    lo = f_arrMin(g_mL)
+    if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey)
+        color col   = array.get(cMain, k)
+        mins    = array.get(nMain, k)
+        lineEnd = rs + 4 * mins * 60000
+        // box
+        box.new(rs, hi, re, lo, xloc = xloc.bar_time,
+             border_color = col, bgcolor = color.new(col, i_opac), border_width = 1)
+        // solid high/low + dotted mid lines
+        line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid)
+        line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = line.style_solid)
+        line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
+             color = c_mid1, style = line.style_dotted)
+        // ---- volume profile (overlap-weighted bins) ----
+        levels = math.max(2, i_vplvls)
+        step   = (hi - lo) / levels
+        vols   = array.new_float(levels, 0.0)
+        for b = 0 to array.size(g_mH) - 1
+            h1 = array.get(g_mH, b)
+            l1 = array.get(g_mL, b)
+            v1 = array.get(g_mV, b)
+            sp = h1 - l1
+            for q = 0 to levels - 1
+                blo = lo + q * step
+                bhi = lo + (q + 1) * step
+                ol  = math.min(h1, bhi) - math.max(l1, blo)
+                if ol > 0
+                    w = sp > 0 ? ol / sp : 1.0
+                    array.set(vols, q, array.get(vols, q) + v1 * w)
+        vmax = f_arrMax(vols)
+        if not na(vmax) and vmax > 0
+            // POC + value area expansion
+            total = 0.0
+            for q = 0 to levels - 1
+                total += array.get(vols, q)
+            int poc = 0
+            for q = 1 to levels - 1
+                if array.get(vols, q) > array.get(vols, poc)
+                    poc := q
+            va_lo = poc
+            va_hi = poc
+            if total > 0
+                varea = array.get(vols, poc)
+                tar = math.min(1.0, i_vapct / 100.0) * total
+                while varea < tar and (va_lo > 0 or va_hi < levels - 1)
+                    above = va_hi < levels - 1 ? array.get(vols, va_hi + 1) : -1.0
+                    below = va_lo > 0         ? array.get(vols, va_lo - 1) : -1.0
+                    if above < 0
+                        va_lo -= 1
+                        varea += array.get(vols, va_lo)
+                    else if below < 0
+                        va_hi += 1
+                        varea += array.get(vols, va_hi)
+                    else if above >= below
+                        va_hi += 1
+                        varea += array.get(vols, va_hi)
+                    else
+                        va_lo -= 1
+                        varea += array.get(vols, va_lo)
+            // draw bins (colored) + per-bin volume values
+            for q = 0 to levels - 1
+                vq = array.get(vols, q)
+                if vq > 0
+                    wq = int(math.max(1.0, math.round(60000.0 * i_vpw * vq / vmax)))
+                    t1 = rs - wq
+                    blo = lo + q * step
+                    bhi = lo + (q + 1) * step
+                    bclr = (q == poc or q == va_lo or q == va_hi)
+                         ? color.new(i_pocc, 35)
+                         : (q >= va_lo and q <= va_hi ? color.new(i_vac, 35) : color.new(col, i_opac))
+                    box.new(t1, bhi, rs, blo, xloc = xloc.bar_time,
+                         border_color = bclr, bgcolor = bclr, border_width = 1)
+                    label.new(t1, (blo + bhi) / 2, str.tostring(int(math.round(vq))),
+                         xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
+                         style = label.style_none, size = size.tiny)
+            // POC / VAH / VAL labels (word only), left of the profile
+            vahi = lo + va_hi * step + step
+            valo = lo + va_lo * step
+            pocp = lo + poc * step + step / 2
+            xL   = rs - i_vpw * 60000 - 10 * 60000
+            label.new(xL, pocp, "POC", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pocc, style = label.style_none, size = size.small)
+            label.new(xL, vahi, "VAH", xloc = xloc.bar_time, color = na,
+                 textcolor = i_vac, style = label.style_none, size = size.small)
+            label.new(xL, valo, "VAL", xloc = xloc.bar_time, color = na,
+                 textcolor = i_vac, style = label.style_none, size = size.small)
+        // ---- buy / sell / delta spread across range top ----
+        if i_bsVol
+            buys = 0.0
+            sells = 0.0
+            for b = 0 to array.size(g_mO) - 1
+                o = array.get(g_mO, b)
+                c = array.get(g_mC, b)
+                v = array.get(g_mV, b)
+                if c > o
+                    buys += v
+                else if c < o
+                    sells += v
+                else
+                    buys += v / 2
+                    sells += v / 2
+            diff = buys - sells
+            bw = (re - rs) / 3
+            ybs = hi + (hi - lo) * 0.03
+            rwb = (re - rs) / nz(time - time[1], 60000)
+            s1 = str.tostring(int(math.round(buys)))
+            s2 = str.tostring(int(math.round(sells)))
+            s3 = "Delta " + str.tostring(int(math.round(math.abs(diff))))
+            label.new(rs, ybs, s1, xloc = xloc.bar_time, color = na,
+                 textcolor = color.new(color.lime, 0), style = label.style_none, size = f_barSize(rwb))
+            label.new(int(rs + bw), ybs, s2, xloc = xloc.bar_time, color = na,
+                 textcolor = color.new(color.red, 0), style = label.style_none, size = f_barSize(rwb))
+            label.new(int(rs + 2 * bw), ybs, s3, xloc = xloc.bar_time, color = na,
+                 textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
+                 style = label.style_none, size = f_barSize(rwb))
+    // reset state
+    g_mainRs  := na
+    g_mRe     := na
+    g_mainIdx := -1
+    array.clear(g_mH)
+    array.clear(g_mL)
+    array.clear(g_mO)
+    array.clear(g_mC)
+    array.clear(g_mV)
 
-//=== 2) INSIDE COMPLETION (independent of main range) ================
-if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0
-    if prev >= g_inRs and prev < g_inRe and bt >= g_inRe
-        rsI = g_inRs
-        reI = g_inRe
-        giM = not na(g_inMainRs) and g_inMainRs <= rsI and reI <= g_inMainRe
-        hiI = f_arrMax(g_iH)
-        loI = f_arrMin(g_iL)
-        if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey)
-            leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
-            box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
-                 border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1)
-            line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted)
-            line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
-                 color = c_mid2, style = line.style_dotted)
-            line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = line.style_dotted)
-        g_inRs      := na
-        g_inRe      := na
-        g_inIdx     := -1
-        g_inLineEnd := na
-        array.clear(g_iH)
-        array.clear(g_iL)
-        array.clear(g_iV)
+//=== 2) INSIDE COMPLETION (independent of main range) =================
+if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
+    rsI = g_inRs
+    reI = g_inRe
+    giM = not na(g_inMainRs) and g_inMainRs <= rsI and reI <= g_inMainRe
+    hiI = f_arrMax(g_iH)
+    loI = f_arrMin(g_iL)
+    if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey)
+        leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
+        box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
+             border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1)
+        line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted)
+        line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
+             color = c_mid2, style = line.style_dotted)
+        line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = line.style_dotted)
+    g_inRs      := na
+    g_inRe      := na
+    g_inIdx     := -1
+    g_inLineEnd := na
+    array.clear(g_iH)
+    array.clear(g_iL)
+    array.clear(g_iV)
 
-//=== 3) STARTS / RESETS ==============================================
-if actM >= 0
-    if array.get(rS, actM) != g_mainRs
-        g_mainRs  := array.get(rS, actM)
-        g_mRe     := g_mainRs + array.get(nMain, actM) * 60000
-        g_mainIdx := actM
-        array.clear(g_mH)
-        array.clear(g_mL)
-        array.clear(g_mO)
-        array.clear(g_mC)
-        array.clear(g_mV)
-if actI >= 0
-    if array.get(rIS, actI) != g_inRs
-        g_inRs    := array.get(rIS, actI)
-        g_inRe    := g_inRs + array.get(nIn, actI) * 60000
-        g_inIdx   := actI
-        g_inMainRs:= array.get(rS, actI)
-        g_inMainRe:= g_inMainRs + array.get(nMain, actI) * 60000
-        if not na(g_mainRs) and g_mainIdx == actI
-            g_inLineEnd := g_mainRs + 4 * array.get(nMain, actI) * 60000
-        else
-            g_inLineEnd := na
-        array.clear(g_iH)
-        array.clear(g_iL)
-        array.clear(g_iV)
+//=== 3) STARTS =========================================================
+int actM = -1
+if not na(g_mRe)
+    actM := g_mainIdx
+else if foundM >= 0
+    array.set(g_lastRs, foundM, bt)
+    g_mainRs  := bt
+    g_mRe     := bt + array.get(nMain, foundM) * 60000
+    g_mainIdx := foundM
+    array.clear(g_mH)
+    array.clear(g_mL)
+    array.clear(g_mO)
+    array.clear(g_mC)
+    array.clear(g_mV)
+    actM := foundM
 
-//=== 4) ACCUMULATE current bar into active windows ===================
+int actI = -1
+if not na(g_inRe)
+    actI := g_inIdx
+else if foundI >= 0
+    g_inRs    := bt
+    g_inRe    := bt + array.get(nIn, foundI) * 60000
+    g_inIdx   := foundI
+    g_inMainRs:= array.get(g_lastRs, foundI)
+    g_inMainRe:= na(g_inMainRs) ? na : g_inMainRs + array.get(nMain, foundI) * 60000
+    g_inLineEnd:= na(g_inMainRs) ? na : g_inMainRs + 4 * array.get(nMain, foundI) * 60000
+    array.clear(g_iH)
+    array.clear(g_iL)
+    array.clear(g_iV)
+    actI := foundI
+
+//=== 4) ACCUMULATE current bar into active windows ====================
 if actM >= 0
     array.push(g_mH, high)
     array.push(g_mL, low)
