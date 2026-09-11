@@ -230,7 +230,7 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                     if i_binTxt
                         tv = str.tostring(int(math.round(vq)))
                         label.new(int(t1 - i_txtGap * 60000 - str.length(tv) * i_txtCw * 60000 / 2),
-                             (blo + bhi) / 2, tv,
+                             (blo + bhi) / 2 - step * 0.2, tv,
                              xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
                              style = label.style_none, size = size.small)
                     // POC / VAH / VAL word labels centered inside their own bin
