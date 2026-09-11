@@ -37,6 +37,9 @@ input int    Profile_Levels     =20;      // Volume profile price bins
 input int    Profile_MaxWidth   =60;      // Volume profile max width (minutes)
 input int    Profile_FontSize   =7;       // Volume profile text font size
 input color  Profile_TextColor  =clrWhite;  // Volume profile text color
+input int    Value_Area_Pct     =70;      // Value area volume % (built around POC)
+input color  Value_Area_Color   =clrWhite; // Value area bin + VAH/VAL label color
+input color  POC_Color          =clrYellow;// Point of control bin + label color
 input bool   Show_BuySell_Volume=true;      // Buy/Sell volume + difference below main range
 input int    BuySell_FontSize   =9;         // Buy/Sell label font size
 
@@ -334,11 +337,36 @@ void DrawVolumeProfile(const string base,const color rc,
    double vmax=0.0;
    for(int k=0;k<levels;k++)
       vmax=MathMax(vmax,vol[k]);
-   if(vmax<=0.0)
+if(vmax<=0.0)
       return;
    const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
    const color fill=BlendBoxColor(rc,chart_bg,InpBoxOpacity);
-const int max_sec=Profile_MaxWidth*60;
+   const color va_fill=BlendBoxColor(Value_Area_Color,chart_bg,InpBoxOpacity+50);
+   const color poc_fill=BlendBoxColor(POC_Color,chart_bg,InpBoxOpacity+50);
+   double total=0.0;
+   for(int k=0;k<levels;k++)
+      total+=vol[k];
+   int poc=0;
+   for(int k=1;k<levels;k++)
+      if(vol[k]>vol[poc])
+         poc=k;
+   int va_lo=poc;
+   int va_hi=poc;
+   if(total>0.0)
+   {
+      double varea_vol=vol[poc];
+      const double target=MathMin(1.0,(double)Value_Area_Pct/100.0)*total;
+      while(varea_vol<target && (va_lo>0 || va_hi<levels-1))
+      {
+         const int above=(va_hi<levels-1)?(int)MathRound(vol[va_hi+1]):-1;
+         const int below=(va_lo>0)?(int)MathRound(vol[va_lo-1]):-1;
+         if(above<0)      { va_lo--; varea_vol+=vol[va_lo]; }
+         else if(below<0) { va_hi++; varea_vol+=vol[va_hi]; }
+         else if(above>=below) { va_hi++; varea_vol+=vol[va_hi]; }
+         else                   { va_lo--; varea_vol+=vol[va_lo]; }
+      }
+   }
+   const int max_sec=Profile_MaxWidth*60;
    const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
    const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
    const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
@@ -351,10 +379,11 @@ const int max_sec=Profile_MaxWidth*60;
       const int w=MathMax(1,(int)MathRound((double)max_sec*vol[k]/vmax));
       const datetime t1=rs-(datetime)w;
       const string nm=base+"_VP"+IntegerToString(k);
+      const color binclr=(k==poc?poc_fill:(k>=va_lo && k<=va_hi?va_fill:fill));
       if(ObjectCreate(0,nm,OBJ_RECTANGLE,0,t1,bin_lo[k],rs,bin_hi[k]))
       {
-         ObjectSetInteger(0,nm,OBJPROP_COLOR,fill);
-         ObjectSetInteger(0,nm,OBJPROP_BGCOLOR,fill);
+         ObjectSetInteger(0,nm,OBJPROP_COLOR,binclr);
+         ObjectSetInteger(0,nm,OBJPROP_BGCOLOR,binclr);
          ObjectSetInteger(0,nm,OBJPROP_FILL,true);
          ObjectSetInteger(0,nm,OBJPROP_STYLE,STYLE_SOLID);
          ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
@@ -381,6 +410,30 @@ const int max_sec=Profile_MaxWidth*60;
             ObjectSetInteger(0,nmT,OBJPROP_HIDDEN,false);
          }
       }
+   }
+   const double vahi=bin_hi[va_hi];
+   const double valo=bin_lo[va_lo];
+   const double pocp=(bin_lo[poc]+bin_hi[poc])/2.0;
+   const datetime xL=rs-(datetime)max_sec;
+   struct LP { string nm; double price; string txt; color clr; };
+   LP lev[3];
+   lev[0].nm=base+"_POC"; lev[0].price=pocp;
+   lev[0].txt="POC "+DoubleToString(pocp,_Digits); lev[0].clr=POC_Color;
+   lev[1].nm=base+"_VAH"; lev[1].price=vahi;
+   lev[1].txt="VAH "+DoubleToString(vahi,_Digits); lev[1].clr=Value_Area_Color;
+   lev[2].nm=base+"_VAL"; lev[2].price=valo;
+   lev[2].txt="VAL "+DoubleToString(valo,_Digits); lev[2].clr=Value_Area_Color;
+   for(int k=0;k<3;k++)
+   {
+      if(!ObjectCreate(0,lev[k].nm,OBJ_TEXT,0,xL,lev[k].price))
+         continue;
+      ObjectSetString(0,lev[k].nm,OBJPROP_TEXT,lev[k].txt);
+      ObjectSetInteger(0,lev[k].nm,OBJPROP_COLOR,lev[k].clr);
+      ObjectSetInteger(0,lev[k].nm,OBJPROP_FONTSIZE,Profile_FontSize+1);
+      ObjectSetInteger(0,lev[k].nm,OBJPROP_ANCHOR,ANCHOR_RIGHT);
+      ObjectSetInteger(0,lev[k].nm,OBJPROP_BACK,false);
+      ObjectSetInteger(0,lev[k].nm,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,lev[k].nm,OBJPROP_HIDDEN,false);
    }
 }
 
