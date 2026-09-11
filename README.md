@@ -32,7 +32,7 @@ Buy (mirror): anchor bearish; breaker close above breaker open; breaker close ab
 
 Gold boxes show the selected HTF anchor body ([2] or [3], depending on the variant), blue boxes show the break candle[1], and dashed green/red boxes project the buy/sell area of interest. Labels identify the HTF and the anchor index. Each detected signal also receives a checklist showing direction, close, open-side, both sweep alternatives, and wick checks. On each new signal the EA draws the candle bodies and projects the zone; stale drawings from earlier timeframes/versions are removed on init.
 
-The EA draws a tick-volume profile for each completed broker day it processes. Tick volume from M1 bars is accumulated into price bins. The histogram grows from the left edge of its session, while the POC (gold), VAH, and VAL (blue) remain bounded to that session. Completed profiles remain on the chart. Dotted gray vertical lines mark broker-day starts.
+The EA draws a tick-volume profile for each completed broker day it processes. Each M1 bar contributes its broker tick volume at its typical price `(high + low + close) / 3`, which is available reliably on live charts. The histogram grows from the left edge of its session, while the POC (gold), VAH, and VAL (blue) remain bounded to that session. Completed profiles remain on the chart. Dotted gray vertical lines mark broker-day starts.
 
 ## Area selection
 

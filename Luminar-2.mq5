@@ -368,7 +368,7 @@ bool FindPreviousBrokerSession(const datetime current_session,datetime &profile_
    {
       if(profile_start==0 || profile_end<=profile_start)
          return false;
-      if(CopyRates(_Symbol,PERIOD_M1,profile_start,profile_end-1,probe)>0)
+       if(CopyRates(_Symbol,PERIOD_M1,profile_start,profile_end-1,probe)>=60)
          return true;
       profile_end=profile_start;
       profile_start=ShiftBrokerDay(profile_end,-1);
@@ -381,6 +381,12 @@ void DeleteProfileForSession(const datetime profile_start)
    ObjectsDeleteAll(0,object_prefix+"VP_"+IntegerToString((long)profile_start)+"_");
 }
 
+bool LoadProfileBars(const datetime profile_start,const datetime profile_end,MqlRates &bars[])
+{
+   const int copied=CopyRates(_Symbol,PERIOD_M1,profile_start,profile_end-1,bars);
+   return copied>=60 && SeriesInfoInteger(_Symbol,PERIOD_M1,SERIES_SYNCHRONIZED);
+}
+
 bool DrawPreviousDayVolumeProfile(const datetime current_session)
 {
    DrawDaySeparators(current_session);
@@ -388,10 +394,11 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
    datetime profile_end=0;
    if(!FindPreviousBrokerSession(current_session,profile_start,profile_end))
       return false;
-   DeleteProfileForSession(profile_start);
    MqlRates bars[];
-   if(CopyRates(_Symbol,PERIOD_M1,profile_start,profile_end-1,bars)<=0)
+   if(!LoadProfileBars(profile_start,profile_end,bars))
       return false;
+   Print("Volume profile M1 tick volume | ",TimeToString(profile_start,TIME_DATE|TIME_MINUTES),
+         "..",TimeToString(profile_end,TIME_DATE|TIME_MINUTES)," | bars ",ArraySize(bars));
 
    double low=1.0e100;
    double high=-1.0e100;
@@ -419,18 +426,16 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
    int poc=0;
    for(int i=0;i<ArraySize(bars);i++)
    {
-      int first_bin=(int)MathFloor((bars[i].low-low)/bin_size);
-      int last_bin=(int)MathFloor((bars[i].high-low)/bin_size);
-      if(first_bin<0) first_bin=0;
-      if(last_bin>=bins) last_bin=bins-1;
-      const int covered=last_bin-first_bin+1;
-      const double distributed=(covered>0 ? (double)bars[i].tick_volume/(double)covered : 0.0);
-      for(int bin=first_bin;bin<=last_bin;bin++)
-         volume[bin]+=distributed;
+      const double price=(bars[i].high+bars[i].low+bars[i].close)/3.0;
+      int bin=(int)MathFloor((price-low)/bin_size);
+      if(bin<0) bin=0;
+      if(bin>=bins) bin=bins-1;
+      volume[bin]+=(double)bars[i].tick_volume;
       total+=(double)bars[i].tick_volume;
    }
    if(total<=0.0)
       return false;
+   DeleteProfileForSession(profile_start);
    for(int i=0;i<bins;i++)
    {
       if(volume[i]>maximum)
@@ -476,7 +481,7 @@ bool DrawPreviousDayVolumeProfile(const datetime current_session)
       ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
       ObjectSetInteger(0,name,OBJPROP_HIDDEN,false);
    }
-   const double label_gap=MathMax(3.0*bin_size,20.0*_Point);
+   const double label_gap=MathMax(15.0*bin_size,100.0*_Point);
    DrawProfileLevel("VAH",profile_start,profile_end,low+(value_high+1)*bin_size,
                     low+(value_high+1)*bin_size+label_gap,clrDeepSkyBlue,1);
    DrawProfileLevel("POC",profile_start,profile_end,low+(poc+0.5)*bin_size,
