@@ -472,11 +472,17 @@ if i_sessLvl and newSession and historyStart <= sessionStart - 86400000 and (i_s
             f_regLine(line.new(sessionStart, sValo, sLe, sValo, xloc.bar_time, color = i_pval, style = line.style_dotted))
             f_regLabel(label.new(sessionStart, sValo, "VAL", xloc = xloc.bar_time, color = na,
                  textcolor = i_pval, style = label.style_none, size = size.tiny))
+            f_regLabel(label.new(sLe, sValo, "VAL", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pval, style = label.style_none, size = size.tiny))
             f_regLine(line.new(sessionStart, sVahi, sLe, sVahi, xloc.bar_time, color = i_pvah, style = line.style_dotted))
             f_regLabel(label.new(sessionStart, sVahi, "VAH", xloc = xloc.bar_time, color = na,
                  textcolor = i_pvah, style = label.style_none, size = size.tiny))
+            f_regLabel(label.new(sLe, sVahi, "VAH", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pvah, style = label.style_none, size = size.tiny))
             f_regLine(line.new(sessionStart, sPocp, sLe, sPocp, xloc.bar_time, color = i_ppoc, style = line.style_dotted))
             f_regLabel(label.new(sessionStart, sPocp, "POC", xloc = xloc.bar_time, color = na,
+                 textcolor = i_ppoc, style = label.style_none, size = size.tiny))
+            f_regLabel(label.new(sLe, sPocp, "POC", xloc = xloc.bar_time, color = na,
                  textcolor = i_ppoc, style = label.style_none, size = size.tiny))
 
 //=== 3) STARTS =========================================================
