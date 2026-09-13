@@ -343,19 +343,15 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
     array.clear(g_iL)
     array.clear(g_iV)
 
-//=== 2b) DAILY DIVIDER (vertical line at the NY divider time) ============
-// Height is the real price range since the previous divider, so the line's
-// endpoints always stay inside the data range and never distend the price scale.
-var float dHi = na
-var float dLo = na
-dHi := na(dHi) ? high : math.max(dHi, high)
-dLo := na(dLo) ? low  : math.min(dLo, low)
+//=== 2b) DAILY DIVIDER (full-window vertical line at the NY divider time) =
+// The defined segment sits between this bar's high/low, i.e. inside the data
+// range, so it never distends the autoscaled price range; extend.both then
+// stretches the vertical line to the top and bottom edges of the pane.
 if i_divOn and nyh == divh and nym == divm and (i_showPrev or f_nyDateKey(bt) == todayKey)
-    if not na(dHi) and not na(dLo) and dHi > dLo
-        f_regLine(line.new(bt, dLo, bt, dHi, xloc.bar_time,
-             color = c_div, style = line.style_dashed))
-    dHi := na
-    dLo := na
+    if high > low
+        divLn = line.new(bt, low, bt, high, xloc.bar_time, color = c_div, style = line.style_dashed)
+        line.set_extend(divLn, extend.both)
+        f_regLine(divLn)
 
 //=== 3) STARTS =========================================================
 int actM = -1
