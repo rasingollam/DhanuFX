@@ -419,25 +419,6 @@ if i_sessLvl and nyh == divh and nym == divm and (i_showPrev or f_nyDateKey(bt) 
             sValo = ssLo + sVaLo * sStep
             sVahi = ssLo + (sVaHi + 1) * sStep
             sPocp = ssLo + (sPoc + 0.5) * sStep
-            // draw prev-session profile bins (colored) + per-bin volume values
-            for q = 0 to sLevels - 1
-                sVq = array.get(sVols, q)
-                if sVq > 0
-                    sWq = int(math.max(1.0, math.round(60000.0 * i_vpw * sVq / sVmax)))
-                    sT1 = bt - sWq
-                    sBlo = ssLo + q * sStep
-                    sBhi = ssLo + (q + 1) * sStep
-                    sBclr = (q == sPoc or q == sVaLo or q == sVaHi)
-                         ? color.new(i_ppoc, 20)
-                         : (q >= sVaLo and q <= sVaHi ? color.new(i_pval, 40) : color.new(c_div, 65))
-                    f_regBox(box.new(sT1, sBhi, bt, sBlo, xloc = xloc.bar_time,
-                         border_color = sBclr, bgcolor = sBclr, border_width = 1))
-                    if i_binTxt
-                        sTv = str.tostring(int(math.round(sVq)))
-                        f_regLabel(label.new(int(sT1 - i_txtGap * 60000 - str.length(sTv) * i_txtCw * 60000 / 2),
-                             (sBlo + sBhi) / 2 - sStep * 0.2, sTv,
-                             xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
-                             style = label.style_none, size = size.small))
             sLe = bt + 86400000
             f_regLine(line.new(bt, sValo, sLe, sValo, xloc.bar_time, color = i_pval, style = line.style_dotted))
             f_regLabel(label.new(bt, sValo, "VAL", xloc = xloc.bar_time, color = na,
