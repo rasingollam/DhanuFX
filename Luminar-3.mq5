@@ -658,6 +658,58 @@ int DrawSessionLevels(const int cy,const int cm,const int cd,
    const double valo=bin_lo[va_lo];
    const double pocp=(bin_lo[poc]+bin_hi[poc])/2.0;
    const string ymd_s=IntegerToString(YMD(cy,cm,cd));
+   int created=0;
+   const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
+   const color fill=BlendBoxColor(clrGray,chart_bg,InpBoxOpacity);
+   const color va_fill=BlendBoxColor(Value_Area_Color,chart_bg,InpBoxOpacity+50);
+   const color poc_fill=BlendBoxColor(Sess_POC_Color,chart_bg,InpBoxOpacity+50);
+   const int max_sec=Profile_MaxWidth*60;
+   for(int k=0;k<levels;k++)
+   {
+      if(vol[k]<=0.0)
+         continue;
+      const int w=MathMax(1,(int)MathRound((double)max_sec*vol[k]/vmax));
+      const datetime t1=dt-(datetime)w;
+      const string nm=g_prefix+"SL_"+ymd_s+"_VP"+IntegerToString(k);
+      const color binclr=(k==poc||k==va_lo||k==va_hi?poc_fill:(k>=va_lo&&k<=va_hi?va_fill:fill));
+      if(ObjectCreate(0,nm,OBJ_RECTANGLE,0,t1,bin_lo[k],dt,bin_hi[k]))
+      {
+         ObjectSetInteger(0,nm,OBJPROP_COLOR,binclr);
+         ObjectSetInteger(0,nm,OBJPROP_BGCOLOR,binclr);
+         ObjectSetInteger(0,nm,OBJPROP_FILL,true);
+         ObjectSetInteger(0,nm,OBJPROP_STYLE,STYLE_SOLID);
+         ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
+         ObjectSetInteger(0,nm,OBJPROP_BACK,false);
+         ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
+         ObjectSetInteger(0,nm,OBJPROP_HIDDEN,false);
+         created++;
+         const string txt=IntegerToString((long)MathRound(vol[k]));
+         const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
+         const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
+         const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+         const double bin_px=((hi-lo)>0.0 && pmax>pmin && hpix>0.0)
+                              ? step*hpix/(pmax-pmin) : 8.0;
+         const string nmT=nm+"_TXT";
+         int fs=Profile_FontSize;
+         int fh=(int)MathFloor(bin_px*0.7);
+         if(fh>=5)
+            fs=MathMin(fs,fh);
+         if(fs<4)
+            fs=4;
+         const double cy=(bin_lo[k]+bin_hi[k])/2.0;
+         if(ObjectCreate(0,nmT,OBJ_TEXT,0,t1,cy))
+         {
+            ObjectSetString(0,nmT,OBJPROP_TEXT,txt);
+            ObjectSetInteger(0,nmT,OBJPROP_COLOR,Profile_TextColor);
+            ObjectSetInteger(0,nmT,OBJPROP_FONTSIZE,fs);
+            ObjectSetInteger(0,nmT,OBJPROP_ANCHOR,ANCHOR_RIGHT);
+            ObjectSetInteger(0,nmT,OBJPROP_BACK,false);
+            ObjectSetInteger(0,nmT,OBJPROP_SELECTABLE,false);
+            ObjectSetInteger(0,nmT,OBJPROP_HIDDEN,false);
+            created++;
+         }
+      }
+   }
    const string lv_nm[3]={"VAH","VAL","POC"};
    const double lv_pr[3]={vahi,valo,pocp};
    const color  lv_cl[3]={Sess_VAH_Color,Sess_VAL_Color,Sess_POC_Color};
@@ -675,9 +727,11 @@ int DrawSessionLevels(const int cy,const int cm,const int cd,
          ObjectSetInteger(0,nmT,OBJPROP_BACK,false);
          ObjectSetInteger(0,nmT,OBJPROP_SELECTABLE,false);
          ObjectSetInteger(0,nmT,OBJPROP_HIDDEN,false);
+         created++;
       }
    }
-   return 6;
+   created+=3;
+   return created;
 }
 
 //+------------------------------------------------------------------+
