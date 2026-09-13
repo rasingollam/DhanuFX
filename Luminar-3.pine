@@ -89,6 +89,37 @@ f_barSize(rw_bars) =>
         s := size.small
     s
 
+//------------ FIFO garbage collection (deterministic, stays under the 500 hard cap) ------------
+// Pine v5 has no box.all/line.all/label.all, so we register every object we create
+// and delete the OLDEST when we exceed our budget. Keeps the last ~18-20 days on screen.
+const int OCAP_BOX = 480
+const int OCAP_LIN = 480
+const int OCAP_LBL = 480
+var array<box>   g_boxes  = array.new_box()
+var array<line>  g_lines  = array.new_line()
+var array<label> g_labels = array.new_label()
+
+f_regBox(b) =>
+    array.push(g_boxes, b)
+    if array.size(g_boxes) > OCAP_BOX
+        box.delete(array.get(g_boxes, 0))
+        array.shift(g_boxes)
+    b
+
+f_regLine(l) =>
+    array.push(g_lines, l)
+    if array.size(g_lines) > OCAP_LIN
+        line.delete(array.get(g_lines, 0))
+        array.shift(g_lines)
+    l
+
+f_regLabel(t) =>
+    array.push(g_labels, t)
+    if array.size(g_labels) > OCAP_LBL
+        label.delete(array.get(g_labels, 0))
+        array.shift(g_labels)
+    t
+
 //------------ range configuration (parsed once) ------------
 [rh1, rm1]   = f_parse(i_r1s)
 [rih1, rim1] = f_parse(i_r1i)
@@ -137,12 +168,6 @@ var array<float> g_iV = array.new_float()
 bt        = time             // bar open (ms) = window start when NY minute matches
 todayKey  = f_nyDateKey(bt)
 
-//---- visible chart window (ms); using chart.* makes TradingView re-execute on pan/zoom
-leftVisT  = chart.left_visible_bar_time
-rightVisT = chart.right_visible_bar_time
-leftVis   = na(leftVisT)  ? 0            : leftVisT   // fallback: from epoch
-rightVis  = na(rightVisT) ? 4102444800000 : rightVisT  // fallback: year 2100
-
 //---- which range starts on this bar (only one can match a minute) ----
 int foundM = -1
 for k = 0 to 2
@@ -162,18 +187,18 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
     re = g_mRe
     hi = f_arrMax(g_mH)
     lo = f_arrMin(g_mL)
-    if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey) and re >= leftVis and rs <= rightVis
+    if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey)
         color col   = array.get(cMain, k)
         mins    = array.get(nMain, k)
         lineEnd = rs + 4 * mins * 60000
         // box
-        box.new(rs, hi, re, lo, xloc = xloc.bar_time,
-             border_color = col, bgcolor = color.new(col, i_opac), border_width = 1)
+        f_regBox(box.new(rs, hi, re, lo, xloc = xloc.bar_time,
+             border_color = col, bgcolor = color.new(col, i_opac), border_width = 1))
         // solid high/low + dotted mid lines
-        line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid)
-        line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = line.style_solid)
-        line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
-             color = c_mid1, style = line.style_dotted)
+        f_regLine(line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid))
+        f_regLine(line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = line.style_solid))
+        f_regLine(line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
+             color = c_mid1, style = line.style_dotted))
         // ---- volume profile (overlap-weighted bins) ----
         levels = math.max(2, i_vplvls)
         step   = (hi - lo) / levels
@@ -231,27 +256,27 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                     bclr = (q == poc or q == va_lo or q == va_hi)
                          ? color.new(i_pocc, 35)
                          : (q >= va_lo and q <= va_hi ? color.new(i_vac, 35) : color.new(col, i_opac))
-                    box.new(t1, bhi, rs, blo, xloc = xloc.bar_time,
-                         border_color = bclr, bgcolor = bclr, border_width = 1)
+                    f_regBox(box.new(t1, bhi, rs, blo, xloc = xloc.bar_time,
+                         border_color = bclr, bgcolor = bclr, border_width = 1))
                     if i_binTxt
                         tv = str.tostring(int(math.round(vq)))
-                        label.new(int(t1 - i_txtGap * 60000 - str.length(tv) * i_txtCw * 60000 / 2),
+                        f_regLabel(label.new(int(t1 - i_txtGap * 60000 - str.length(tv) * i_txtCw * 60000 / 2),
                              (blo + bhi) / 2 - step * 0.2, tv,
                              xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
-                             style = label.style_none, size = size.small)
+                             style = label.style_none, size = size.small))
                     // POC / VAH / VAL word labels centered inside their own bin
                     if q == poc
-                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "POC",
+                        f_regLabel(label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "POC",
                              xloc = xloc.bar_time, color = na, textcolor = i_pocc,
-                             style = label.style_none, size = size.small)
+                             style = label.style_none, size = size.small))
                     if q == va_hi
-                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "VAH",
+                        f_regLabel(label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "VAH",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
-                             style = label.style_none, size = size.small)
+                             style = label.style_none, size = size.small))
                     if q == va_lo
-                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "VAL",
+                        f_regLabel(label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "VAL",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
-                             style = label.style_none, size = size.small)
+                             style = label.style_none, size = size.small))
         // ---- buy / sell / delta spread across range top ----
         if i_bsVol
             buys = 0.0
@@ -274,13 +299,13 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
             s1 = str.tostring(int(math.round(buys)))
             s2 = str.tostring(int(math.round(sells)))
             s3 = "Delta " + str.tostring(int(math.round(math.abs(diff))))
-            label.new(rs, ybs, s1, xloc = xloc.bar_time, color = na,
-                 textcolor = color.new(color.lime, 0), style = label.style_none, size = f_barSize(rwb))
-            label.new(int(rs + bw), ybs, s2, xloc = xloc.bar_time, color = na,
-                 textcolor = color.new(color.red, 0), style = label.style_none, size = f_barSize(rwb))
-            label.new(int(rs + 2 * bw), ybs, s3, xloc = xloc.bar_time, color = na,
+            f_regLabel(label.new(rs, ybs, s1, xloc = xloc.bar_time, color = na,
+                 textcolor = color.new(color.lime, 0), style = label.style_none, size = f_barSize(rwb)))
+            f_regLabel(label.new(int(rs + bw), ybs, s2, xloc = xloc.bar_time, color = na,
+                 textcolor = color.new(color.red, 0), style = label.style_none, size = f_barSize(rwb)))
+            f_regLabel(label.new(int(rs + 2 * bw), ybs, s3, xloc = xloc.bar_time, color = na,
                  textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
-                 style = label.style_none, size = f_barSize(rwb))
+                 style = label.style_none, size = f_barSize(rwb)))
     // reset state
     g_mainRs  := na
     g_mRe     := na
@@ -298,14 +323,14 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
     giM = not na(g_inMainRs) and g_inMainRs <= rsI and reI <= g_inMainRe
     hiI = f_arrMax(g_iH)
     loI = f_arrMin(g_iL)
-    if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey) and reI >= leftVis and rsI <= rightVis
+    if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey)
         leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
-        box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
-             border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1)
-        line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted)
-        line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
-             color = c_mid2, style = line.style_dotted)
-        line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = line.style_dotted)
+        f_regBox(box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
+             border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1))
+        f_regLine(line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted))
+        f_regLine(line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
+             color = c_mid2, style = line.style_dotted))
+        f_regLine(line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = line.style_dotted))
     g_inRs      := na
     g_inRe      := na
     g_inIdx     := -1
