@@ -538,11 +538,12 @@ if actI >= 0
     array.push(g_iL, low)
     array.push(g_iV, nz(volume, 0.0))
 
-//=== 5) HTF CANDLE OVERLAY (aggregated buckets at real chart prices) ====
-// Aggregates chart bars into i_ptf-minute buckets (epoch-aligned); the
-// forming candle plus the last X closed ones are drawn as boxes/wicks at
-// real time and price, so the current price always sits inside the live
-// candle. Redrawn every bar (old objects deleted first, no trails).
+//=== 5) HTF CANDLE OVERLAY (at real bucket times) ======================
+// Aggregates chart bars into i_ptf-minute buckets (epoch-aligned). The
+// forming candle and the last X closed ones are drawn as wick + body at
+// their real time and price, overlaid on the chart like a Power of Three
+// HTF overlay. The forming candle naturally extends to its bucket end.
+// Redrawn every bar (old objects deleted first, no trails).
 bktSec = int(i_ptf * 60000)
 var int   pBktId   = na
 var float pBktO    = na
