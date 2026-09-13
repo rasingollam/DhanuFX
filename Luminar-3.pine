@@ -45,6 +45,12 @@ i_vplvls  = input.int(20,       "Price bins", minval = 2, maxval = 100, group = 
 i_vapct   = input.int(70,       "Value area volume (%)", minval = 1, maxval = 100, group = "06 - Volume profile")
 i_sessLvl = input.bool(true,    "Show previous-session VAH/VAL/POC", group = "05 - Session")
 
+//----- Price panel -----
+i_panel  = input.bool(true,     "Show floating price panel", group = "07 - Price panel", tooltip = "Aggregates chart bars into N-minute buckets (90 min by default) and shows the forming bucket plus the last X closed ones.")
+i_ptf    = input.int(90,        "Panel timeframe (minutes)", minval = 1, maxval = 1440, group = "07 - Price panel")
+i_pprev  = input.int(3,         "Previous candles shown", minval = 0, maxval = 20, group = "07 - Price panel")
+i_pos    = input.string("Right", "Panel position", options = ["Right", "Left", "Middle right", "Middle left", "Top", "Bottom", "Top right", "Top left", "Bottom right", "Bottom left"], group = "07 - Price panel")
+
 //----- Style -----
 c_r1     = input.color(COL_R1, "Range 1", group = "Style - Ranges", inline = "rangeColors")
 c_r2     = input.color(COL_R2, "Range 2", group = "Style - Ranges", inline = "rangeColors")
@@ -63,6 +69,13 @@ c_div    = input.color(color.gray, "Divider", group = "Style - Session")
 i_pval   = input.color(color.aqua, "VAL", group = "Style - Session", inline = "sessionColors")
 i_pvah   = input.color(color.fuchsia, "VAH", group = "Style - Session", inline = "sessionColors")
 i_ppoc   = input.color(#FF4500, "POC", group = "Style - Session", inline = "sessionColors")
+
+//----- Style - Price panel -----
+i_ptext = input.color(color.white, "Panel text", group = "Style - Price panel")
+i_phead = input.color(color.gray, "Header text", group = "Style - Price panel")
+i_pup   = input.color(color.lime, "Up candles", group = "Style - Price panel")
+i_pdn   = input.color(color.red, "Down candles", group = "Style - Price panel")
+i_pbkg  = input.color(color.new(color.black, 25), "Panel background", group = "Style - Price panel")
 
 //------------ helpers ------------
 f_parse(s) =>
@@ -144,6 +157,24 @@ f_barSize(rw_bars) =>
     else
         s := size.small
     s
+
+// Panel helpers: position lookup, price + bucket time formatting.
+f_pos(s) =>
+    switch s
+        "Right"         => position.middle_right
+        "Left"          => position.middle_left
+        "Middle right"  => position.middle_right
+        "Middle left"   => position.middle_left
+        "Top"           => position.top_center
+        "Bottom"        => position.bottom_center
+        "Top right"     => position.top_right
+        "Top left"      => position.top_left
+        "Bottom right"  => position.bottom_right
+        "Bottom left"   => position.bottom_left
+        => position.middle_right
+
+f_px(p) => str.tostring(p, format.mintick)
+f_btm(t) => str.format_time(t, "HH:mm", syminfo.timezone)
 
 //------------ FIFO garbage collection (deterministic, stays under the 500 hard cap) ------------
 // Register each object so explicit deletion and budgets stay synchronized.
@@ -527,3 +558,86 @@ if actI >= 0
     array.push(g_iH, high)
     array.push(g_iL, low)
     array.push(g_iV, nz(volume, 0.0))
+
+//=== 5) FLOATING PRICE PANEL (aggregated buckets) ======================
+// Aggregates chart bars into i_ptf-minute buckets (epoch-aligned) so any
+// minute chart can show e.g. 90-minute candles. Table updates every bar.
+var table pTbl = na
+bktSec = int(i_ptf * 60000)
+var int   pBktId   = na
+var float pBktO    = na
+var float pBktH    = na
+var float pBktL    = na
+var float pBktC    = na
+var array<float> pC  = array.new_float()
+var array<int>   pCB = array.new_int()
+
+bkt = int((time - (time % bktSec)) / bktSec)
+if na(pBktId)
+    pBktId := bkt
+    pBktO  := open
+    pBktH  := high
+    pBktL  := low
+    pBktC  := close
+else if bkt != pBktId
+    array.push(pC, pBktO)
+    array.push(pC, pBktH)
+    array.push(pC, pBktL)
+    array.push(pC, pBktC)
+    array.push(pCB, pBktId)
+    while array.size(pCB) > i_pprev + 1
+        array.remove(pCB, 0)
+        array.remove(pC, 0)
+        array.remove(pC, 0)
+        array.remove(pC, 0)
+        array.remove(pC, 0)
+    pBktId := bkt
+    pBktO  := open
+    pBktH  := high
+    pBktL  := low
+    pBktC  := close
+else
+    pBktH := math.max(pBktH, high)
+    pBktL := math.min(pBktL, low)
+    pBktC := close
+
+if i_panel
+    if na(pTbl)
+        pTbl := table.new(f_pos(i_pos), 5, i_pprev + 2, bgcolor = i_pbkg,
+             frame_color = i_phead, frame_width = 1, border_color = i_phead, border_width = 1)
+    hdr = array.from("Time", "Open", "High", "Low", "Close")
+    for c = 0 to 4
+        table.cell(pTbl, c, 0, array.get(hdr, c), text_color = i_phead, text_size = size.small)
+    curUp = not na(pBktC) and not na(pBktO) and pBktC >= pBktO
+    clr = curUp ? i_pup : i_pdn
+    table.cell(pTbl, 0, 1, f_btm(pBktId * bktSec), text_color = i_ptext, text_size = size.small)
+    table.cell(pTbl, 1, 1, f_px(pBktO), text_color = clr, text_size = size.small)
+    table.cell(pTbl, 2, 1, f_px(pBktH), text_color = clr, text_size = size.small)
+    table.cell(pTbl, 3, 1, f_px(pBktL), text_color = clr, text_size = size.small)
+    table.cell(pTbl, 4, 1, f_px(pBktC), text_color = clr, text_size = size.small)
+    nC = array.size(pCB)
+    for i = 1 to i_pprev
+        idx = nC - i
+        if idx >= 0
+            base = idx * 4
+            bO = array.get(pC, base)
+            bH = array.get(pC, base + 1)
+            bL = array.get(pC, base + 2)
+            bC = array.get(pC, base + 3)
+            up = bC >= bO
+            wclr = up ? i_pup : i_pdn
+            table.cell(pTbl, 0, 1 + i, f_btm(array.get(pCB, idx) * bktSec), text_color = i_ptext, text_size = size.small)
+            table.cell(pTbl, 1, 1 + i, f_px(bO), text_color = wclr, text_size = size.small)
+            table.cell(pTbl, 2, 1 + i, f_px(bH), text_color = wclr, text_size = size.small)
+            table.cell(pTbl, 3, 1 + i, f_px(bL), text_color = wclr, text_size = size.small)
+            table.cell(pTbl, 4, 1 + i, f_px(bC), text_color = wclr, text_size = size.small)
+        else
+            table.cell(pTbl, 0, 1 + i, "", text_color = i_ptext, text_size = size.small)
+            table.cell(pTbl, 1, 1 + i, "", text_color = i_ptext, text_size = size.small)
+            table.cell(pTbl, 2, 1 + i, "", text_color = i_ptext, text_size = size.small)
+            table.cell(pTbl, 3, 1 + i, "", text_color = i_ptext, text_size = size.small)
+            table.cell(pTbl, 4, 1 + i, "", text_color = i_ptext, text_size = size.small)
+else
+    if not na(pTbl)
+        table.delete(pTbl)
+        pTbl := na
