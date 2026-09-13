@@ -52,7 +52,7 @@ i_pocc    = input.color(color.yellow, "Point of control bin + label color", grou
 i_sessLvl = input.bool(true, "Prev session (18:00->18:00) VAH/VAL/POC levels", group = "Prev Session Levels")
 i_pval    = input.color(color.aqua, "Prev session VAL level color", group = "Prev Session Levels")
 i_pvah    = input.color(color.fuchsia, "Prev session VAH level color", group = "Prev Session Levels")
-i_ppoc    = input.color(color.orangeRed, "Prev session POC level color", group = "Prev Session Levels")
+i_ppoc    = input.color(#FF4500, "Prev session POC level color", group = "Prev Session Levels")
 
 //------------ helpers ------------
 f_parse(s) =>
