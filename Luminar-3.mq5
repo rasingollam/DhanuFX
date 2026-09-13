@@ -3,7 +3,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026"
 #property link      ""
-#property version   "1.02"
+#property version   "1.04"
 #property strict
 
 //--- Range 1
@@ -43,6 +43,10 @@ input color  Profile_TextColor  =clrWhite;  // Volume profile text color
 input int    Value_Area_Pct     =70;      // Value area volume % (built around POC)
 input color  Value_Area_Color   =clrWhite; // Value area bin + VAH/VAL label color
 input color  POC_Color          =clrYellow;// Point of control bin + label color
+input bool   Show_Session_Levels=true;    // Prev session (18:00->18:00) VP VAH/VAL/POC levels
+input color  Sess_VAH_Color      =clrFuchsia;  // Prev session VAH level color
+input color  Sess_VAL_Color      =clrAqua;     // Prev session VAL level color
+input color  Sess_POC_Color      =clrOrangeRed; // Prev session POC level color
 input bool   Show_BuySell_Volume=true;      // Buy/Sell volume + difference below main range
 
 string g_prefix;
@@ -566,6 +570,117 @@ void DrawRangePair(const int cy,const int cm,const int cd,
 }
 
 //+------------------------------------------------------------------+
+//| Prev session (18:00->18:00) volume profile levels                |
+//| Session S = NY divider time on date D. The 24h stretch from the  |
+//| PREVIOUS NY divider to S is the volume-profile window; its POC / |
+//| VAH / VAL are drawn as dotted horizontal levels across session S.|
+//+------------------------------------------------------------------+
+int DrawSessionLevels(const int cy,const int cm,const int cd,
+                      const datetime now_server,
+                      const datetime vstart,const datetime vend)
+{
+   if(!Show_Session_Levels)
+      return 0;
+   const datetime dt=NyTimeChart(cy,cm,cd,g_div_h,g_div_m);   // start of session S
+   const datetime re=dt+86400;                                // end of session S
+   if(re>now_server)
+      return 0;
+   if(!(re>vstart && dt<vend))
+      return 0;
+   MqlRates bars[];
+   const int copied=CopyRates(_Symbol,PERIOD_M1,dt-86400,1440,bars);
+   const int want=MathMin(InpMinM1Bars,1440/2+1);
+   if(copied<want)
+      return 0;
+   double lo=1.0e100;
+   double hi=-1.0e100;
+   for(int b=0;b<copied;b++)
+   {
+      hi=MathMax(hi,bars[b].high);
+      lo=MathMin(lo,bars[b].low);
+   }
+   if(hi<=lo)
+      return 0;
+   const int levels=MathMax(2,Profile_Levels);
+   const double step=(hi-lo)/levels;
+   double bin_lo[],bin_hi[],vol[];
+   ArrayResize(bin_lo,levels);
+   ArrayResize(bin_hi,levels);
+   ArrayResize(vol,levels);
+   ArrayInitialize(vol,0.0);
+   for(int k=0;k<levels;k++)
+   {
+      bin_lo[k]=lo+k*step;
+      bin_hi[k]=lo+(k+1)*step;
+   }
+   for(int b=0;b<copied;b++)
+   {
+      const double h=bars[b].high;
+      const double l=bars[b].low;
+      const double span=h-l;
+      for(int k=0;k<levels;k++)
+      {
+         const double ol=MathMin(h,bin_hi[k])-MathMax(l,bin_lo[k]);
+         if(ol<=0.0)
+            continue;
+         vol[k]+=bars[b].tick_volume*(span>0.0?ol/span:1.0);
+      }
+   }
+   double vmax=0.0;
+   for(int k=0;k<levels;k++)
+      vmax=MathMax(vmax,vol[k]);
+   if(vmax<=0.0)
+      return 0;
+   double total=0.0;
+   for(int k=0;k<levels;k++)
+      total+=vol[k];
+   int poc=0;
+   for(int k=1;k<levels;k++)
+      if(vol[k]>vol[poc])
+         poc=k;
+   int va_lo=poc;
+   int va_hi=poc;
+   if(total>0.0)
+   {
+      double varea_vol=vol[poc];
+      const double target=MathMin(1.0,(double)Value_Area_Pct/100.0)*total;
+      while(varea_vol<target && (va_lo>0 || va_hi<levels-1))
+      {
+         const int above=(va_hi<levels-1)?(int)MathRound(vol[va_hi+1]):-1;
+         const int below=(va_lo>0)?(int)MathRound(vol[va_lo-1]):-1;
+         if(above<0)      { va_lo--; varea_vol+=vol[va_lo]; }
+         else if(below<0) { va_hi++; varea_vol+=vol[va_hi]; }
+         else if(above>=below) { va_hi++; varea_vol+=vol[va_hi]; }
+         else                   { va_lo--; varea_vol+=vol[va_lo]; }
+      }
+   }
+   const double vahi=bin_hi[va_hi];
+   const double valo=bin_lo[va_lo];
+   const double pocp=(bin_lo[poc]+bin_hi[poc])/2.0;
+   const string ymd_s=IntegerToString(YMD(cy,cm,cd));
+   const string lv_nm[3]={"VAH","VAL","POC"};
+   const double lv_pr[3]={vahi,valo,pocp};
+   const color  lv_cl[3]={Sess_VAH_Color,Sess_VAL_Color,Sess_POC_Color};
+   for(int k=0;k<3;k++)
+   {
+      const string nm=g_prefix+"SL_"+ymd_s+"_"+lv_nm[k];
+      DrawDottedLevel(nm,dt,re,lv_pr[k],lv_cl[k],STYLE_DOT,"Prev session "+lv_nm[k]);
+      const string nmT=nm+"_TXT";
+      if(ObjectCreate(0,nmT,OBJ_TEXT,0,re,lv_pr[k]))
+      {
+         ObjectSetString(0,nmT,OBJPROP_TEXT,lv_nm[k]);
+         ObjectSetInteger(0,nmT,OBJPROP_COLOR,lv_cl[k]);
+         ObjectSetInteger(0,nmT,OBJPROP_FONTSIZE,Profile_FontSize+1);
+         ObjectSetInteger(0,nmT,OBJPROP_ANCHOR,ANCHOR_LEFT);
+         ObjectSetInteger(0,nmT,OBJPROP_BACK,false);
+         ObjectSetInteger(0,nmT,OBJPROP_SELECTABLE,false);
+         ObjectSetInteger(0,nmT,OBJPROP_HIDDEN,false);
+      }
+   }
+   return 6;
+}
+
+//+------------------------------------------------------------------+
 //| Draw a vertical daily divider for a given NY date                |
 //+------------------------------------------------------------------+
 void DrawDayDivider(const int cy,const int cm,const int cd)
@@ -633,6 +748,7 @@ void RenderBoxes()
                     R2_color,now_server,vstart,vend,created);
       DrawRangePair(cy,cm,cd,g_r3_h,g_r3_m,R3_mins,g_r3_ih,g_r3_im,R3_inside_mins,
                     R3_color,now_server,vstart,vend,created);
+      created+=DrawSessionLevels(cy,cm,cd,now_server,vstart,vend);
       DrawDayDivider(cy,cm,cd);
       dt.day+=1;
       cursor=StructToTime(dt);
@@ -673,6 +789,8 @@ int ParamsKey()
       (ulong)(long)Value_Area_Color, (ulong)(long)POC_Color,
       (Show_Previous_Ranges?1UL:0UL),
       (Show_BuySell_Volume?1UL:0UL),
+      (Show_Session_Levels?1UL:0UL),
+      (ulong)(long)Sess_VAH_Color, (ulong)(long)Sess_VAL_Color, (ulong)(long)Sess_POC_Color,
       (Show_Divider?1UL:0UL),
       (ulong)g_div_h,  (ulong)g_div_m,
       (ulong)(long)Divider_color

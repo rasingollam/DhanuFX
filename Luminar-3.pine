@@ -49,6 +49,10 @@ i_vptxt   = input.color(color.white, "Volume profile text color", group = "Volum
 i_vapct   = input.int(70,     "Value area volume % (built around POC)", group = "Volume Profile")
 i_vac     = input.color(color.white, "Value area bin + VAH/VAL label color", group = "Volume Profile")
 i_pocc    = input.color(color.yellow, "Point of control bin + label color", group = "Volume Profile")
+i_sessLvl = input.bool(true, "Prev session (18:00->18:00) VAH/VAL/POC levels", group = "Prev Session Levels")
+i_pval    = input.color(color.aqua, "Prev session VAL level color", group = "Prev Session Levels")
+i_pvah    = input.color(color.fuchsia, "Prev session VAH level color", group = "Prev Session Levels")
+i_ppoc    = input.color(color.orangeRed, "Prev session POC level color", group = "Prev Session Levels")
 
 //------------ helpers ------------
 f_parse(s) =>
@@ -352,6 +356,79 @@ if i_divOn and nyh == divh and nym == divm and (i_showPrev or f_nyDateKey(bt) ==
         divLn = line.new(bt, low, bt, high, xloc.bar_time, color = c_div, style = line.style_dashed)
         line.set_extend(divLn, extend.both)
         f_regLine(divLn)
+
+//=== 2c) PREV SESSION (18:00->18:00) VOLUME PROFILE LEVELS ============
+// A session is the 24h stretch between two consecutive NY 18:00 dividers.
+// Levels shown during session S are the POC/VAH/VAL of the PREVIOUS session
+// [S-24h, S): "prev day 18:00 from prev-prev day 18:00".
+if i_sessLvl and nyh == divh and nym == divm and (i_showPrev or f_nyDateKey(bt) == todayKey)
+    float ssHi = na
+    float ssLo = na
+    int qt = 1
+    while qt <= 5000 and not na(time[qt]) and time[qt] >= bt - 86400000
+        ssHi := na(ssHi) ? high[qt] : math.max(ssHi, high[qt])
+        ssLo := na(ssLo) ? low[qt]  : math.min(ssLo, low[qt])
+        qt += 1
+    if not na(ssHi) and not na(ssLo) and ssHi > ssLo
+        sLevels = math.max(2, i_vplvls)
+        sStep   = (ssHi - ssLo) / sLevels
+        sVols   = array.new_float(sLevels, 0.0)
+        qt := 1
+        while qt <= 5000 and not na(time[qt]) and time[qt] >= bt - 86400000
+            sH1 = high[qt]
+            sL1 = low[qt]
+            sV1 = volume[qt]
+            sSp = sH1 - sL1
+            for q = 0 to sLevels - 1
+                sBlo = ssLo + q * sStep
+                sBhi = ssLo + (q + 1) * sStep
+                sOl  = math.min(sH1, sBhi) - math.max(sL1, sBlo)
+                if sOl > 0
+                    sW = sSp > 0 ? sOl / sSp : 1.0
+                    array.set(sVols, q, array.get(sVols, q) + sV1 * sW)
+            qt += 1
+        sVmax = f_arrMax(sVols)
+        if not na(sVmax) and sVmax > 0
+            sTotal = 0.0
+            for q = 0 to sLevels - 1
+                sTotal += array.get(sVols, q)
+            int sPoc = 0
+            for q = 1 to sLevels - 1
+                if array.get(sVols, q) > array.get(sVols, sPoc)
+                    sPoc := q
+            sVaLo = sPoc
+            sVaHi = sPoc
+            if sTotal > 0
+                sVarea = array.get(sVols, sPoc)
+                sTar = math.min(1.0, i_vapct / 100.0) * sTotal
+                while sVarea < sTar and (sVaLo > 0 or sVaHi < sLevels - 1)
+                    sAbove = sVaHi < sLevels - 1 ? array.get(sVols, sVaHi + 1) : -1.0
+                    sBelow = sVaLo > 0          ? array.get(sVols, sVaLo - 1) : -1.0
+                    if sAbove < 0
+                        sVaLo -= 1
+                        sVarea += array.get(sVols, sVaLo)
+                    else if sBelow < 0
+                        sVaHi += 1
+                        sVarea += array.get(sVols, sVaHi)
+                    else if sAbove >= sBelow
+                        sVaHi += 1
+                        sVarea += array.get(sVols, sVaHi)
+                    else
+                        sVaLo -= 1
+                        sVarea += array.get(sVols, sVaLo)
+            sValo = ssLo + sVaLo * sStep
+            sVahi = ssLo + (sVaHi + 1) * sStep
+            sPocp = ssLo + (sPoc + 0.5) * sStep
+            sLe = bt + 86400000
+            f_regLine(line.new(bt, sValo, sLe, sValo, xloc.bar_time, color = i_pval, style = line.style_dotted))
+            f_regLabel(label.new(bt, sValo, "VAL", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pval, style = label.style_none, size = size.tiny))
+            f_regLine(line.new(bt, sVahi, sLe, sVahi, xloc.bar_time, color = i_pvah, style = line.style_dotted))
+            f_regLabel(label.new(bt, sVahi, "VAH", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pvah, style = label.style_none, size = size.tiny))
+            f_regLine(line.new(bt, sPocp, sLe, sPocp, xloc.bar_time, color = i_ppoc, style = line.style_dotted))
+            f_regLabel(label.new(bt, sPocp, "POC", xloc = xloc.bar_time, color = na,
+                 textcolor = i_ppoc, style = label.style_none, size = size.tiny))
 
 //=== 3) STARTS =========================================================
 int actM = -1
