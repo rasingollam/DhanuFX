@@ -538,11 +538,11 @@ if actI >= 0
     array.push(g_iL, low)
     array.push(g_iV, nz(volume, 0.0))
 
-//=== 5) HTF CANDLE OVERLAY (at real bucket times) ======================
-// Aggregates chart bars into i_ptf-minute buckets (epoch-aligned). The
-// forming candle and the last X closed ones are drawn as wick + body at
-// their real time and price, overlaid on the chart like a Power of Three
-// HTF overlay. The forming candle naturally extends to its bucket end.
+//=== 5) HTF CANDLE OVERLAY (shifted into the future) ===================
+// Aggregates chart bars into i_ptf-minute buckets. The forming candle
+// and the last X closed ones are drawn as wick + body at real prices,
+// placed by bar count so spacing can never collapse: the block starts
+// (1 + X) candle-widths past the last bar, oldest left, forming right.
 // Redrawn every bar (old objects deleted first, no trails).
 bktSec = int(i_ptf * 60000)
 var int   pBktId   = na
@@ -590,14 +590,14 @@ if i_panel
     while array.size(pWicks) > 0
         line.delete(array.shift(pWicks))
     nC = array.size(pCB)
+    slotW = math.max(1, math.round(bktSec / (timeframe.multiplier * 60000)))
+    lead = (1 + i_pprev) * slotW
     for j = 0 to i_pprev
-        int tS = na
         float o  = na
         float h  = na
         float l  = na
         float c  = na
         if j == 0
-            tS := pBktId * bktSec
             o  := pBktO
             h  := pBktH
             l  := pBktL
@@ -606,20 +606,21 @@ if i_panel
             idx = nC - j
             if idx >= 0
                 base = idx * 4
-                tS := array.get(pCB, idx) * bktSec
                 o  := array.get(pC, base)
                 h  := array.get(pC, base + 1)
                 l  := array.get(pC, base + 2)
                 c  := array.get(pC, base + 3)
-        if not na(tS) and not na(h) and not na(l)
+        if not na(o) and not na(h) and not na(l)
+            lx = bar_index + lead + (i_pprev - j) * slotW
+            rx = lx + slotW
+            wx = lx + int(slotW / 2)
             up = c >= o
             bclr = up ? i_pup : i_pdn
             wclr = up ? color.new(i_pup, 45) : color.new(i_pdn, 45)
-            wc = int(tS + bktSec / 2)
-            array.push(pWicks, line.new(wc, h, wc, l, xloc = xloc.bar_time, color = wclr, width = 1))
+            array.push(pWicks, line.new(wx, h, wx, l, xloc = xloc.bar_index, color = wclr, width = 1))
             bTop = math.max(o, c)
             bBot = math.min(o, c)
-            array.push(pBoxes, box.new(tS, bTop, tS + bktSec, bBot, xloc = xloc.bar_time,
+            array.push(pBoxes, box.new(lx, bTop, rx, bBot, xloc = xloc.bar_index,
                  border_color = bclr, bgcolor = color.new(bclr, i_pfill), border_width = 1))
 else
     while array.size(pBoxes) > 0
