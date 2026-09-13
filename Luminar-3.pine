@@ -19,9 +19,9 @@ i_r1i  = input.string("09:30", "Range 1 inside start (NY)")
 i_r1im = input.int(15,      "Range 1 inside length (min)", minval = 1, maxval = 1440)
 c_r1   = input.color(COL_R1, "Range 1 box color", group = "Range 1")
 
-i_r2s  = input.string("01:30", "Range 2 start (NY)")
+i_r2s  = input.string("03:00", "Range 2 start (NY)")
 i_r2m  = input.int(90,      "Range 2 length (min)", minval = 1, maxval = 1440)
-i_r2i  = input.string("01:30", "Range 2 inside start (NY)")
+i_r2i  = input.string("03:00", "Range 2 inside start (NY)")
 i_r2im = input.int(15,      "Range 2 inside length (min)", minval = 1, maxval = 1440)
 c_r2   = input.color(COL_R2, "Range 2 box color", group = "Range 2")
 
@@ -134,8 +134,14 @@ var array<float> g_iH = array.new_float()
 var array<float> g_iL = array.new_float()
 var array<float> g_iV = array.new_float()
 
-bt   = time             // bar open (ms) = window start when NY minute matches
-todayKey = f_nyDateKey(bt)
+bt        = time             // bar open (ms) = window start when NY minute matches
+todayKey  = f_nyDateKey(bt)
+
+//---- visible chart window (ms); using chart.* makes TradingView re-execute on pan/zoom
+leftVisT  = chart.left_visible_bar_time
+rightVisT = chart.right_visible_bar_time
+leftVis   = na(leftVisT)  ? 0            : leftVisT   // fallback: from epoch
+rightVis  = na(rightVisT) ? 4102444800000 : rightVisT  // fallback: year 2100
 
 //---- which range starts on this bar (only one can match a minute) ----
 int foundM = -1
@@ -156,7 +162,7 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
     re = g_mRe
     hi = f_arrMax(g_mH)
     lo = f_arrMin(g_mL)
-    if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey)
+    if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey) and re >= leftVis and rs <= rightVis
         color col   = array.get(cMain, k)
         mins    = array.get(nMain, k)
         lineEnd = rs + 4 * mins * 60000
@@ -292,7 +298,7 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
     giM = not na(g_inMainRs) and g_inMainRs <= rsI and reI <= g_inMainRe
     hiI = f_arrMax(g_iH)
     loI = f_arrMin(g_iL)
-    if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey)
+    if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey) and reI >= leftVis and rsI <= rightVis
         leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
         box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
              border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1)

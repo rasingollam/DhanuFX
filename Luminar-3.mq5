@@ -3,7 +3,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026"
 #property link      ""
-#property version   "1.01"
+#property version   "1.02"
 #property strict
 
 //--- Range 1
@@ -14,9 +14,9 @@ input int    R1_inside_mins   =15;        // Range 1 inside length (minutes)
 input color  R1_color         =clrDodgerBlue;  // Range 1 box color
 
 //--- Range 2
-input string R2_start         ="01:30";   // Range 2 start (NY HH:MM)
+input string R2_start         ="03:00";   // Range 2 start (NY HH:MM)
 input int    R2_mins          =90;        // Range 2 length (minutes)
-input string R2_inside_start  ="01:30";   // Range 2 inside start (NY HH:MM)
+input string R2_inside_start  ="03:00";   // Range 2 inside start (NY HH:MM)
 input int    R2_inside_mins   =15;        // Range 2 inside length (minutes)
 input color  R2_color         =clrGold;       // Range 2 box color
 
@@ -50,6 +50,7 @@ int    g_server_offset=0;
 bool   g_offset_ready=false;
 datetime g_last_render=0;
 long   g_last_range_key=0;
+int    g_params_key=0;
 
 //+------------------------------------------------------------------+
 //| Parse "HH:MM" string into hours/minutes                          |
@@ -622,6 +623,41 @@ void RenderBoxes()
 }
 
 //+------------------------------------------------------------------+
+//| FNV-1a hash of all inputs that affect rendering                  |
+//| Returns a different value whenever any relevant input changes.   |
+//+------------------------------------------------------------------+
+int ParamsKey()
+{
+   ulong h=2166136261UL;
+   const ulong FNV=16777619UL;
+   const ulong k[]=
+      {
+      (ulong)g_r1_h,    (ulong)g_r1_m,   (ulong)g_r1_ih,     (ulong)g_r1_im,
+      (ulong)g_r2_h,    (ulong)g_r2_m,   (ulong)g_r2_ih,     (ulong)g_r2_im,
+      (ulong)g_r3_h,    (ulong)g_r3_m,   (ulong)g_r3_ih,     (ulong)g_r3_im,
+      (ulong)R1_mins,   (ulong)R1_inside_mins,
+      (ulong)R2_mins,   (ulong)R2_inside_mins,
+      (ulong)R3_mins,   (ulong)R3_inside_mins,
+      (ulong)InpBoxOpacity,
+      (ulong)InpMinM1Bars,
+      (ulong)(long)R1_color,   (ulong)(long)R2_color,   (ulong)(long)R3_color,
+      (ulong)(long)Inside_color,
+      (ulong)Profile_Levels,   (ulong)Profile_MaxWidth, (ulong)Profile_FontSize,
+      (ulong)(long)Profile_TextColor,
+      (ulong)Value_Area_Pct,
+      (ulong)(long)Value_Area_Color, (ulong)(long)POC_Color,
+      (Show_Previous_Ranges?1UL:0UL),
+      (Show_BuySell_Volume?1UL:0UL)
+      };
+   for(int i=0;i<ArraySize(k);i++)
+   {
+      h^=k[i];
+      h*=FNV;
+   }
+   return (int)(h^((ulong)Server_GMT_offset*3600UL));
+}
+
+//+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
@@ -647,6 +683,7 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    if(Server_GMT_offset!=-999 && (Server_GMT_offset<-12.0 || Server_GMT_offset>14.0))
    { Print("Invalid Server_GMT_offset"); return INIT_PARAMETERS_INCORRECT; }
+   g_params_key=ParamsKey();
    RenderBoxes();
    return(INIT_SUCCEEDED);
 }
@@ -665,6 +702,15 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   const int pk=ParamsKey();
+   if(pk!=g_params_key)
+   {
+      g_params_key=pk;
+      g_last_render=0;
+      Print("Luminar3 input change detected - clearing and redrawing all ranges");
+      RenderBoxes();
+      return;
+   }
    if(TimeCurrent()-g_last_render>=30)
    {
       g_last_render=TimeCurrent();
