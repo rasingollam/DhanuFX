@@ -344,9 +344,18 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
     array.clear(g_iV)
 
 //=== 2b) DAILY DIVIDER (vertical line at the NY divider time) ============
+// Height is the real price range since the previous divider, so the line's
+// endpoints always stay inside the data range and never distend the price scale.
+var float dHi = na
+var float dLo = na
+dHi := na(dHi) ? high : math.max(dHi, high)
+dLo := na(dLo) ? low  : math.min(dLo, low)
 if i_divOn and nyh == divh and nym == divm and (i_showPrev or f_nyDateKey(bt) == todayKey)
-    f_regLine(line.new(bt, -1e12, bt, 1e12, xloc.bar_time,
-         color = c_div, style = line.style_dashed))
+    if not na(dHi) and not na(dLo) and dHi > dLo
+        f_regLine(line.new(bt, dLo, bt, dHi, xloc.bar_time,
+             color = c_div, style = line.style_dashed))
+    dHi := na
+    dLo := na
 
 //=== 3) STARTS =========================================================
 int actM = -1
