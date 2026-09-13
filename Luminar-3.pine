@@ -34,7 +34,7 @@ i_showPrev = input.bool(true,    "Show historical drawings", group = "04 - Displ
 i_showRanges = input.bool(true,  "Show main ranges", group = "04 - Display", tooltip = "Range boxes plus high/low/mid lines.")
 i_showInside = input.bool(true,  "Show inside ranges", group = "04 - Display", tooltip = "Inside-range boxes and their high/mid/low lines.")
 i_showRPV    = input.bool(true,  "Show range volume profile (PV)", group = "04 - Display", tooltip = "Per-range volume histogram with bin values and POC/VAH/VAL labels.")
-i_bsVol      = input.bool(true,  "Show estimated buy/sell/delta volumes", group = "04 - Display", tooltip = "Estimated from candle direction; not exchange bid/ask order-flow delta. Bars without volume are excluded.")
+i_delta = input.bool(true,     "Show estimated delta", group = "04 - Display", tooltip = "Delta = estimated buy minus sell volume from candle direction; not exchange bid/ask order-flow. Excluded when a range has no volume.")
 i_divOn   = input.bool(true,    "Show daily divider line", group = "05 - Session")
 i_divTime = input.string("18:00", "Session boundary (NY, HH:mm)", group = "05 - Session", tooltip = "Levels use the preceding fixed 24 hours. New York clock changes are handled by the timezone; the lookback is always 24 elapsed hours.")
 
@@ -343,8 +343,8 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                         f_regLabel(label.new(int(rs - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAL",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
                              style = label.style_none, size = size.small))
-        // ---- buy / sell / delta spread across range top ----
-        if i_bsVol and array.sum(g_mV) > 0
+// ---- delta spread across the range top ----
+        if i_delta and array.sum(g_mV) > 0
             buys = 0.0
             sells = 0.0
             for b = 0 to array.size(g_mO) - 1
@@ -359,17 +359,10 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                     buys += v / 2
                     sells += v / 2
             diff = buys - sells
-            bw = (re - rs) / 3
             ybs = hi + (hi - lo) * 0.03
             rwb = (re - rs) / nz(time - time[1], 60000)
-            s1 = str.tostring(int(math.round(buys)))
-            s2 = str.tostring(int(math.round(sells)))
-            s3 = "Delta " + str.tostring(int(math.round(math.abs(diff))))
-            f_regLabel(label.new(rs, ybs, s1, xloc = xloc.bar_time, color = na,
-                 textcolor = color.new(color.lime, 0), style = label.style_none, size = f_barSize(rwb)))
-            f_regLabel(label.new(int(rs + bw), ybs, s2, xloc = xloc.bar_time, color = na,
-                 textcolor = color.new(color.red, 0), style = label.style_none, size = f_barSize(rwb)))
-            f_regLabel(label.new(int(rs + 2 * bw), ybs, s3, xloc = xloc.bar_time, color = na,
+            s3 = "Δ " + str.tostring(int(math.round(math.abs(diff))))
+            f_regLabel(label.new(int(rs + (re - rs) / 2), ybs, s3, xloc = xloc.bar_time, color = na,
                  textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
                  style = label.style_none, size = f_barSize(rwb)))
     // reset state
