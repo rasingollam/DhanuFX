@@ -29,6 +29,9 @@ input color  R3_color         =clrLime;       // Range 3 box color
 
 //--- Common
 input color  Inside_color       =clrPurple;    // Inside range box color
+input bool   Show_Divider       =true;     // Show daily divider line
+input string Divider_time       ="18:00";  // Daily divider time (NY HH:MM)
+input color  Divider_color      =clrDimGray; // Daily divider line color
 input int    InpBoxOpacity      =115;     // Box opacity (0..255)
 input int    InpMinM1Bars       =30;      // Min M1 bars to accept a window
 input double Server_GMT_offset  =-999;    // Broker GMT offset hours (-999 = auto)
@@ -48,6 +51,8 @@ int    g_r2_h,g_r2_m,g_r2_ih,g_r2_im;
 int    g_r3_h,g_r3_m,g_r3_ih,g_r3_im;
 int    g_server_offset=0;
 bool   g_offset_ready=false;
+int    g_div_h=18;
+int    g_div_m=0;
 datetime g_last_render=0;
 long   g_last_range_key=0;
 int    g_params_key=0;
@@ -561,6 +566,25 @@ void DrawRangePair(const int cy,const int cm,const int cd,
 }
 
 //+------------------------------------------------------------------+
+//| Draw a vertical daily divider for a given NY date                |
+//+------------------------------------------------------------------+
+void DrawDayDivider(const int cy,const int cm,const int cd)
+{
+   if(!Show_Divider)
+      return;
+   const datetime dt=NyTimeChart(cy,cm,cd,g_div_h,g_div_m);
+   const string nm=g_prefix+"DIV_"+IntegerToString(YMD(cy,cm,cd));
+   if(!ObjectCreate(0,nm,OBJ_VLINE,0,dt,0))
+      return;
+   ObjectSetInteger(0,nm,OBJPROP_COLOR,Divider_color);
+   ObjectSetInteger(0,nm,OBJPROP_STYLE,STYLE_DASH);
+   ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
+   ObjectSetInteger(0,nm,OBJPROP_BACK,false);
+   ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,nm,OBJPROP_HIDDEN,false);
+}
+
+//+------------------------------------------------------------------+
 //| Render all range boxes for all visible NY days                   |
 //+------------------------------------------------------------------+
 void RenderBoxes()
@@ -609,6 +633,7 @@ void RenderBoxes()
                     R2_color,now_server,vstart,vend,created);
       DrawRangePair(cy,cm,cd,g_r3_h,g_r3_m,R3_mins,g_r3_ih,g_r3_im,R3_inside_mins,
                     R3_color,now_server,vstart,vend,created);
+      DrawDayDivider(cy,cm,cd);
       dt.day+=1;
       cursor=StructToTime(dt);
    }
@@ -647,7 +672,10 @@ int ParamsKey()
       (ulong)Value_Area_Pct,
       (ulong)(long)Value_Area_Color, (ulong)(long)POC_Color,
       (Show_Previous_Ranges?1UL:0UL),
-      (Show_BuySell_Volume?1UL:0UL)
+      (Show_BuySell_Volume?1UL:0UL),
+      (Show_Divider?1UL:0UL),
+      (ulong)g_div_h,  (ulong)g_div_m,
+      (ulong)(long)Divider_color
       };
    for(int i=0;i<ArraySize(k);i++)
    {
@@ -679,6 +707,8 @@ int OnInit()
    { Print("Range minutes must be 1..1440"); return INIT_PARAMETERS_INCORRECT; }
    if(R1_inside_mins<1||R1_inside_mins>1440||R2_inside_mins<1||R2_inside_mins>1440||R3_inside_mins<1||R3_inside_mins>1440)
    { Print("Inside minutes must be 1..1440"); return INIT_PARAMETERS_INCORRECT; }
+   if(!ParseTimeStr(Divider_time,g_div_h,g_div_m))
+   { Print("Invalid Divider_time (expected HH:MM NY)"); return INIT_PARAMETERS_INCORRECT; }
    if(InpMinM1Bars<1)
       return INIT_PARAMETERS_INCORRECT;
    if(Server_GMT_offset!=-999 && (Server_GMT_offset<-12.0 || Server_GMT_offset>14.0))
