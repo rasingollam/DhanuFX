@@ -583,7 +583,7 @@ int DrawSessionLevels(const int cy,const int cm,const int cd,
       return 0;
    const datetime dt=NyTimeChart(cy,cm,cd,g_div_h,g_div_m);   // start of session S
    const datetime re=dt+86400;                                // end of session S
-   if(re>now_server)
+   if(dt>now_server)                                          // session S not started -> ITS 24h window is incomplete
       return 0;
    if(!(re>vstart && dt<vend))
       return 0;
