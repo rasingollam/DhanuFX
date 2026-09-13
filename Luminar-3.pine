@@ -31,8 +31,10 @@ i_r3i  = input.string("21:00",  "Inside start (NY, HH:mm)", group = "03 - Range 
 i_r3im = input.int(15,          "Inside length (minutes)", minval = 1, maxval = 1440, group = "03 - Range 3")
 
 i_showPrev = input.bool(true,    "Show historical drawings", group = "04 - Display", tooltip = "ON keeps all drawings. OFF shows only drawings whose range/session starts after the last NY divider (current session). Object limits can also trim the oldest drawings.")
-i_showRanges = input.bool(true,  "Show main ranges", group = "04 - Display", tooltip = "Range boxes plus high/low/mid lines.")
-i_showInside = input.bool(true,  "Show inside ranges", group = "04 - Display", tooltip = "Inside-range boxes and their high/mid/low lines.")
+i_showR1 = input.bool(true,     "Show Range 1", group = "04 - Display", tooltip = "Range 1 boxes plus high/low/mid lines.")
+i_showR2 = input.bool(true,     "Show Range 2", group = "04 - Display", tooltip = "Range 2 boxes plus high/low/mid lines.")
+i_showR3 = input.bool(true,     "Show Range 3", group = "04 - Display", tooltip = "Range 3 boxes plus high/low/mid lines.")
+i_showInside = input.bool(true, "Show inside ranges", group = "04 - Display", tooltip = "Inside-range boxes and their high/mid/low lines. Hidden when the parent Range 1/2/3 is switched off.")
 i_showRPV    = input.bool(true,  "Show range volume profile (PV)", group = "04 - Display", tooltip = "Per-range volume histogram with bin values and POC/VAH/VAL labels.")
 i_delta = input.bool(true,     "Show estimated delta", group = "04 - Display", tooltip = "Delta = estimated buy minus sell volume from candle direction; not exchange bid/ask order-flow. Excluded when a range has no volume.")
 i_divOn   = input.bool(true,    "Show daily divider line", group = "05 - Session")
@@ -263,7 +265,8 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
         color col   = array.get(cMain, k)
         mins    = array.get(nMain, k)
         lineEnd = rs + 4 * mins * 60000
-        if i_showRanges
+        rgOn = k == 0 ? i_showR1 : k == 1 ? i_showR2 : i_showR3
+        if rgOn
             // box
             f_regBox(box.new(rs, hi, re, lo, xloc = xloc.bar_time,
                  border_color = col, bgcolor = color.new(col, i_opac), border_width = 1))
@@ -384,7 +387,8 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
     loI = f_arrMin(g_iL)
     if not na(hiI) and hiI > loI and giM and (i_showPrev or rsI >= curSessionStart)
         leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
-        if i_showInside
+        rgOnI = g_inIdx == 0 ? i_showR1 : g_inIdx == 1 ? i_showR2 : i_showR3
+        if i_showInside and rgOnI
             f_regBox(box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
                  border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1))
             f_regLine(line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted))
