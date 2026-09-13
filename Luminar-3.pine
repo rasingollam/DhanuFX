@@ -1,4 +1,4 @@
-// Luminar-3 â€” Pine Script port of the MT5 range EA (v3)
+// Luminar-3 - Pine Script port of the MT5 range EA (v3)
 // Uses standard minute candles (M1-M60; M1 matches the EA exactly). Ranges are
 // detected from the bar that crosses each configured NY time boundary.
 // NY time is computed from the chart bar's NY hour/minute (DST handled automatically).
@@ -45,12 +45,10 @@ i_vplvls  = input.int(20,       "Price bins", minval = 2, maxval = 100, group = 
 i_vapct   = input.int(70,       "Value area volume (%)", minval = 1, maxval = 100, group = "06 - Volume profile")
 i_sessLvl = input.bool(true,    "Show previous-session VAH/VAL/POC", group = "05 - Session")
 
-//----- Price panel -----
-i_panel  = input.bool(true,     "Show floating price panel", group = "07 - Price panel", tooltip = "Aggregates chart bars into N-minute buckets (90 min by default) and shows the forming bucket plus the last X closed ones.")
-i_ptf    = input.int(90,        "Panel timeframe (minutes)", minval = 1, maxval = 1440, group = "07 - Price panel")
-i_pprev  = input.int(3,         "Previous candles shown", minval = 0, maxval = 20, group = "07 - Price panel")
-i_plvls  = input.int(12,        "Price levels", minval = 5, maxval = 25, group = "07 - Price panel", tooltip = "Number of price rows in the candle grid. More levels = finer candles, taller panel.")
-i_pos    = input.string("Top right", "Panel position", options = ["Right", "Left", "Middle right", "Middle left", "Top", "Bottom", "Top right", "Top left", "Bottom right", "Bottom left"], group = "07 - Price panel")
+//----- HTF candle overlay -----
+i_panel  = input.bool(true,     "Show HTF candle overlay", group = "07 - HTF candles", tooltip = "Draws the forming N-minute candle (90 by default) plus the last X closed ones directly on the chart at real prices, like a Power of Three HTF overlay.")
+i_ptf    = input.int(90,        "Candle timeframe (minutes)", minval = 1, maxval = 1440, group = "07 - HTF candles")
+i_pprev  = input.int(3,         "Previous candles shown", minval = 0, maxval = 20, group = "07 - HTF candles")
 
 //----- Style -----
 c_r1     = input.color(COL_R1, "Range 1", group = "Style - Ranges", inline = "rangeColors")
@@ -71,12 +69,10 @@ i_pval   = input.color(color.aqua, "VAL", group = "Style - Session", inline = "s
 i_pvah   = input.color(color.fuchsia, "VAH", group = "Style - Session", inline = "sessionColors")
 i_ppoc   = input.color(#FF4500, "POC", group = "Style - Session", inline = "sessionColors")
 
-//----- Style - Price panel -----
-i_ptext = input.color(color.white, "Panel text", group = "Style - Price panel")
-i_phead = input.color(color.gray, "Header text", group = "Style - Price panel")
-i_pup   = input.color(color.lime, "Up candles", group = "Style - Price panel")
-i_pdn   = input.color(color.red, "Down candles", group = "Style - Price panel")
-i_pbkg  = input.color(color.new(color.black, 25), "Panel background", group = "Style - Price panel")
+//----- Style - HTF candles -----
+i_pup    = input.color(color.lime, "Up candles", group = "Style - HTF candles")
+i_pdn    = input.color(color.red, "Down candles", group = "Style - HTF candles")
+i_pfill  = input.int(30,        "Body fill transparency (%)", minval = 0, maxval = 90, group = "Style - HTF candles")
 
 //------------ helpers ------------
 f_parse(s) =>
@@ -158,24 +154,6 @@ f_barSize(rw_bars) =>
     else
         s := size.small
     s
-
-// Panel helpers: position lookup, price + bucket time formatting.
-f_pos(s) =>
-    switch s
-        "Right"         => position.middle_right
-        "Left"          => position.middle_left
-        "Middle right"  => position.middle_right
-        "Middle left"   => position.middle_left
-        "Top"           => position.top_center
-        "Bottom"        => position.bottom_center
-        "Top right"     => position.top_right
-        "Top left"      => position.top_left
-        "Bottom right"  => position.bottom_right
-        "Bottom left"   => position.bottom_left
-        => position.middle_right
-
-f_px(p) => str.tostring(p, format.mintick)
-f_btm(t) => str.format_time(t, "HH:mm", syminfo.timezone)
 
 //------------ FIFO garbage collection (deterministic, stays under the 500 hard cap) ------------
 // Register each object so explicit deletion and budgets stay synchronized.
@@ -396,7 +374,7 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
             diff = buys - sells
             ybs = hi + (hi - lo) * 0.03
             rwb = (re - rs) / nz(time - time[1], 60000)
-            s3 = "Î” " + str.tostring(int(math.round(math.abs(diff))))
+            s3 = "Δ " + str.tostring(int(math.round(math.abs(diff))))
             f_regLabel(label.new(int(rs + (re - rs) / 2), ybs, s3, xloc = xloc.bar_time, color = na,
                  textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
                  style = label.style_none, size = f_barSize(rwb)))
@@ -560,12 +538,11 @@ if actI >= 0
     array.push(g_iL, low)
     array.push(g_iV, nz(volume, 0.0))
 
-//=== 5) FLOATING PRICE PANEL (aggregated buckets) ======================
-// Aggregates chart bars into i_ptf-minute buckets (epoch-aligned) so any
-// minute chart can show e.g. 90-minute candles. Table updates every bar.
-var table pTbl = na
-var int   pDim   = -1
-var string pPos  = na
+//=== 5) HTF CANDLE OVERLAY (aggregated buckets at real chart prices) ====
+// Aggregates chart bars into i_ptf-minute buckets (epoch-aligned); the
+// forming candle plus the last X closed ones are drawn as boxes/wicks at
+// real time and price, so the current price always sits inside the live
+// candle. Redrawn every bar (old objects deleted first, no trails).
 bktSec = int(i_ptf * 60000)
 var int   pBktId   = na
 var float pBktO    = na
@@ -574,6 +551,8 @@ var float pBktL    = na
 var float pBktC    = na
 var array<float> pC  = array.new_float()
 var array<int>   pCB = array.new_int()
+var array<box>   pBoxes = array.new_box()
+var array<line>  pWicks = array.new_line()
 
 bkt = int((time - (time % bktSec)) / bktSec)
 if na(pBktId)
@@ -605,90 +584,44 @@ else
     pBktC := close
 
 if i_panel
-    dim = (i_pprev + 1) * 1000 + i_plvls
-    if na(pTbl) or pDim != dim or pPos != i_pos
-        if not na(pTbl)
-            table.delete(pTbl)
-        pTbl := table.new(f_pos(i_pos), 1 + (i_pprev + 1) * 2, i_plvls + 1, bgcolor = i_pbkg,
-             frame_color = i_phead, frame_width = 1, border_color = i_phead, border_width = 1)
-        pDim := dim
-        pPos := i_pos
-        table.cell(pTbl, 0, 0, str.tostring(i_ptf) + "m", text_color = i_phead, text_size = size.tiny, text_halign = text.align_right)
+    while array.size(pBoxes) > 0
+        box.delete(array.shift(pBoxes))
+    while array.size(pWicks) > 0
+        line.delete(array.shift(pWicks))
     nC = array.size(pCB)
-    cOarr = array.new_float()
-    cHarr = array.new_float()
-    cLarr = array.new_float()
-    cCarr = array.new_float()
-    tarr = array.new_int()
-    gridHi = pBktH
-    gridLo = pBktL
-    array.push(cOarr, pBktO)
-    array.push(cHarr, pBktH)
-    array.push(cLarr, pBktL)
-    array.push(cCarr, pBktC)
-    array.push(tarr, pBktId)
-    for j = 1 to i_pprev
-        idx = nC - j
-        if idx >= 0
-            base = idx * 4
-            array.push(cOarr, array.get(pC, base))
-            array.push(cHarr, array.get(pC, base + 1))
-            array.push(cLarr, array.get(pC, base + 2))
-            array.push(cCarr, array.get(pC, base + 3))
-            array.push(tarr, array.get(pCB, idx))
-            gridHi := math.max(gridHi, array.get(pC, base + 1))
-            gridLo := math.min(gridLo, array.get(pC, base + 2))
-        else
-            array.push(cOarr, na)
-            array.push(cHarr, na)
-            array.push(cLarr, na)
-            array.push(cCarr, na)
-            array.push(tarr, na)
-    spread = gridHi - gridLo
-    pad = spread > 0 ? spread * 0.06 : syminfo.mintick * 2
-    topP = gridHi + pad
-    botP = gridLo - pad
-    step = (topP - botP) / (i_plvls - 1)
-    for r = 0 to i_plvls - 1
-        p = topP - r * step
-        if r % 2 == 0
-            table.cell(pTbl, 0, 1 + r, f_px(p), text_color = i_ptext, text_size = size.tiny, text_halign = text.align_right)
-        else
-            table.cell(pTbl, 0, 1 + r, "", text_color = i_ptext, text_size = size.tiny)
-        for j = 0 to i_pprev
-            cc = 1 + j * 2
-            if not na(array.get(cCarr, j))
-                o = array.get(cOarr, j)
-                h = array.get(cHarr, j)
-                l = array.get(cLarr, j)
-                c = array.get(cCarr, j)
-                up = c >= o
-                bclr = up ? i_pup : i_pdn
-                wclr = up ? color.new(i_pup, 40) : color.new(i_pdn, 40)
-                bLo = math.min(o, c)
-                bHi = math.max(o, c)
-                inBody = p >= bLo and p <= bHi
-                inWick = p >= l and p <= h and not inBody
-                if inBody
-                    table.cell(pTbl, cc, 1 + r, "", bgcolor = bclr, text_size = size.tiny)
-                else if inWick
-                    table.cell(pTbl, cc, 1 + r, "│", text_color = wclr, bgcolor = na, text_size = size.tiny)
-                else
-                    table.cell(pTbl, cc, 1 + r, "", bgcolor = na, text_size = size.tiny)
-            else
-                table.cell(pTbl, cc, 1 + r, "", bgcolor = na, text_size = size.tiny)
-            table.cell(pTbl, cc + 1, 1 + r, "", bgcolor = na, text_size = size.tiny)
     for j = 0 to i_pprev
-        cc = 1 + j * 2
-        th = ""
-        tId = array.get(tarr, j)
-        if not na(tId)
-            th := f_btm(tId * bktSec)
-        table.cell(pTbl, cc, 0, th, text_color = i_phead, text_size = size.tiny)
-        table.cell(pTbl, cc + 1, 0, "", bgcolor = na, text_size = size.tiny)
+        int tS = na
+        float o  = na
+        float h  = na
+        float l  = na
+        float c  = na
+        if j == 0
+            tS := pBktId * bktSec
+            o  := pBktO
+            h  := pBktH
+            l  := pBktL
+            c  := pBktC
+        else
+            idx = nC - j
+            if idx >= 0
+                base = idx * 4
+                tS := array.get(pCB, idx) * bktSec
+                o  := array.get(pC, base)
+                h  := array.get(pC, base + 1)
+                l  := array.get(pC, base + 2)
+                c  := array.get(pC, base + 3)
+        if not na(tS) and not na(h) and not na(l)
+            up = c >= o
+            bclr = up ? i_pup : i_pdn
+            wclr = up ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+            wc = int(tS + bktSec / 2)
+            array.push(pWicks, line.new(wc, h, wc, l, xloc = xloc.bar_time, color = wclr, width = 1))
+            bTop = math.max(o, c)
+            bBot = math.min(o, c)
+            array.push(pBoxes, box.new(tS, bTop, tS + bktSec, bBot, xloc = xloc.bar_time,
+                 border_color = bclr, bgcolor = color.new(bclr, i_pfill), border_width = 1))
 else
-    if not na(pTbl)
-        table.delete(pTbl)
-        pTbl := na
-        pDim := -1
-        pPos := na
+    while array.size(pBoxes) > 0
+        box.delete(array.shift(pBoxes))
+    while array.size(pWicks) > 0
+        line.delete(array.shift(pWicks))
