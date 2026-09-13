@@ -661,8 +661,8 @@ int DrawSessionLevels(const int cy,const int cm,const int cd,
    int created=0;
    const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
    const color fill=BlendBoxColor(clrGray,chart_bg,InpBoxOpacity);
-   const color va_fill=BlendBoxColor(Value_Area_Color,chart_bg,InpBoxOpacity+50);
-   const color poc_fill=BlendBoxColor(Sess_POC_Color,chart_bg,InpBoxOpacity+50);
+   const color va_fill=BlendBoxColor(Sess_VAL_Color,chart_bg,InpBoxOpacity);
+   const color poc_fill=BlendBoxColor(Sess_POC_Color,chart_bg,InpBoxOpacity);
    const int max_sec=Profile_MaxWidth*60;
    for(int k=0;k<levels;k++)
    {

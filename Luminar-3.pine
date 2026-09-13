@@ -428,8 +428,8 @@ if i_sessLvl and nyh == divh and nym == divm and (i_showPrev or f_nyDateKey(bt) 
                     sBlo = ssLo + q * sStep
                     sBhi = ssLo + (q + 1) * sStep
                     sBclr = (q == sPoc or q == sVaLo or q == sVaHi)
-                         ? color.new(i_ppoc, 35)
-                         : (q >= sVaLo and q <= sVaHi ? color.new(i_vac, 35) : color.new(c_div, 55))
+                         ? color.new(i_ppoc, 20)
+                         : (q >= sVaLo and q <= sVaHi ? color.new(i_pval, 40) : color.new(c_div, 65))
                     f_regBox(box.new(sT1, sBhi, bt, sBlo, xloc = xloc.bar_time,
                          border_color = sBclr, bgcolor = sBclr, border_width = 1))
                     if i_binTxt
