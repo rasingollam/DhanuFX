@@ -555,6 +555,7 @@ var array<float> pC  = array.new_float()
 var array<int>   pCB = array.new_int()
 var array<box>   pBoxes = array.new_box()
 var array<line>  pWicks = array.new_line()
+var array<label> pCount = array.new_label()
 
 bkt = int((time - (time % bktSec)) / bktSec)
 if na(pBktId)
@@ -590,6 +591,8 @@ if i_panel
         box.delete(array.shift(pBoxes))
     while array.size(pWicks) > 0
         line.delete(array.shift(pWicks))
+    while array.size(pCount) > 0
+        label.delete(array.shift(pCount))
     nC = array.size(pCB)
     slotW = math.max(1, math.round(bktSec / (timeframe.multiplier * 60000)))
     lead = math.max(0, (i_pprev - 1) * slotW)
@@ -620,13 +623,28 @@ if i_panel
             up = c >= o
             bclr = up ? i_pup : i_pdn
             wclr = up ? color.new(i_pup, 45) : color.new(i_pdn, 45)
-            array.push(pWicks, line.new(wx, h, wx, l, xloc = xloc.bar_index, color = wclr, width = 1))
             bTop = math.max(o, c)
             bBot = math.min(o, c)
+            if h > bTop
+                array.push(pWicks, line.new(wx, h, wx, bTop, xloc = xloc.bar_index, color = wclr, width = 1))
+            if bBot > l
+                array.push(pWicks, line.new(wx, bBot, wx, l, xloc = xloc.bar_index, color = wclr, width = 1))
             array.push(pBoxes, box.new(lx, bTop, rx, bBot, xloc = xloc.bar_index,
                  border_color = bclr, bgcolor = color.new(bclr, i_pfill), border_width = 1))
+    // countdown to the forming HTF bucket close, at the current price
+    remS = int(math.max(0, ((pBktId + 1) * bktSec - timenow) / 1000))
+    hh = int(remS / 3600)
+    mm = int(remS % 3600 / 60)
+    ss = remS % 60
+    txt = (hh < 10 ? "0" : "") + str.tostring(hh) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm) + ":" + (ss < 10 ? "0" : "") + str.tostring(ss)
+    fx = bar_index + lead + i_pprev * stepW + slotW + 2
+    array.push(pCount, label.new(fx, close, txt, xloc = xloc.bar_index,
+         color = color.new(color.black, 0), textcolor = color.white,
+         style = label.style_label_left, size = size.small))
 else
     while array.size(pBoxes) > 0
         box.delete(array.shift(pBoxes))
     while array.size(pWicks) > 0
         line.delete(array.shift(pWicks))
+    while array.size(pCount) > 0
+        label.delete(array.shift(pCount))
