@@ -609,7 +609,7 @@ if i_panel
     if na(pTbl) or pDim != dim or pPos != i_pos
         if not na(pTbl)
             table.delete(pTbl)
-        pTbl := table.new(f_pos(i_pos), 1 + (i_pprev + 1) * 4, i_plvls + 1, bgcolor = i_pbkg,
+        pTbl := table.new(f_pos(i_pos), 1 + (i_pprev + 1) * 2, i_plvls + 1, bgcolor = i_pbkg,
              frame_color = i_phead, frame_width = 1, border_color = i_phead, border_width = 1)
         pDim := dim
         pPos := i_pos
@@ -619,12 +619,14 @@ if i_panel
     cHarr = array.new_float()
     cLarr = array.new_float()
     cCarr = array.new_float()
+    tarr = array.new_int()
     gridHi = pBktH
     gridLo = pBktL
     array.push(cOarr, pBktO)
     array.push(cHarr, pBktH)
     array.push(cLarr, pBktL)
     array.push(cCarr, pBktC)
+    array.push(tarr, pBktId)
     for j = 1 to i_pprev
         idx = nC - j
         if idx >= 0
@@ -633,6 +635,7 @@ if i_panel
             array.push(cHarr, array.get(pC, base + 1))
             array.push(cLarr, array.get(pC, base + 2))
             array.push(cCarr, array.get(pC, base + 3))
+            array.push(tarr, array.get(pCB, idx))
             gridHi := math.max(gridHi, array.get(pC, base + 1))
             gridLo := math.min(gridLo, array.get(pC, base + 2))
         else
@@ -640,6 +643,7 @@ if i_panel
             array.push(cHarr, na)
             array.push(cLarr, na)
             array.push(cCarr, na)
+            array.push(tarr, na)
     spread = gridHi - gridLo
     pad = spread > 0 ? spread * 0.06 : syminfo.mintick * 2
     topP = gridHi + pad
@@ -652,35 +656,36 @@ if i_panel
         else
             table.cell(pTbl, 0, 1 + r, "", text_color = i_ptext, text_size = size.tiny)
         for j = 0 to i_pprev
-            bc = 1 + j * 4
+            cc = 1 + j * 2
             if not na(array.get(cCarr, j))
                 o = array.get(cOarr, j)
                 h = array.get(cHarr, j)
                 l = array.get(cLarr, j)
                 c = array.get(cCarr, j)
-                bclr = c >= o ? i_pup : i_pdn
-                wclr = c >= o ? color.new(i_pup, 40) : color.new(i_pdn, 40)
+                up = c >= o
+                bclr = up ? i_pup : i_pdn
+                wclr = up ? color.new(i_pup, 40) : color.new(i_pdn, 40)
                 bLo = math.min(o, c)
                 bHi = math.max(o, c)
                 inBody = p >= bLo and p <= bHi
-                inWick = p >= l and p <= h
-                table.cell(pTbl, bc, 1 + r, "", text_color = bclr, bgcolor = inBody ? bclr : na, text_size = size.tiny)
-                table.cell(pTbl, bc + 1, 1 + r, "", text_color = bclr, bgcolor = inBody ? bclr : (inWick ? wclr : na), text_size = size.tiny)
-                table.cell(pTbl, bc + 2, 1 + r, "", text_color = bclr, bgcolor = inBody ? bclr : na, text_size = size.tiny)
+                inWick = p >= l and p <= h and not inBody
+                if inBody
+                    table.cell(pTbl, cc, 1 + r, "", bgcolor = bclr, text_size = size.tiny)
+                else if inWick
+                    table.cell(pTbl, cc, 1 + r, "│", text_color = wclr, bgcolor = na, text_size = size.tiny)
+                else
+                    table.cell(pTbl, cc, 1 + r, "", bgcolor = na, text_size = size.tiny)
             else
-                table.cell(pTbl, bc, 1 + r, "", text_color = i_ptext, bgcolor = na, text_size = size.tiny)
-                table.cell(pTbl, bc + 1, 1 + r, "", text_color = i_ptext, bgcolor = na, text_size = size.tiny)
-                table.cell(pTbl, bc + 2, 1 + r, "", text_color = i_ptext, bgcolor = na, text_size = size.tiny)
-            table.cell(pTbl, bc + 3, 1 + r, "", text_color = i_ptext, bgcolor = na, text_size = size.tiny)
+                table.cell(pTbl, cc, 1 + r, "", bgcolor = na, text_size = size.tiny)
+            table.cell(pTbl, cc + 1, 1 + r, "", bgcolor = na, text_size = size.tiny)
     for j = 0 to i_pprev
+        cc = 1 + j * 2
         th = ""
-        if j == 0
-            th := f_btm(pBktId * bktSec)
-        else
-            idx = nC - j
-            if idx >= 0
-                th := f_btm(array.get(pCB, idx) * bktSec)
-        table.cell(pTbl, 2 + j * 4, 0, th, text_color = i_phead, text_size = size.tiny)
+        tId = array.get(tarr, j)
+        if not na(tId)
+            th := f_btm(tId * bktSec)
+        table.cell(pTbl, cc, 0, th, text_color = i_phead, text_size = size.tiny)
+        table.cell(pTbl, cc + 1, 0, "", bgcolor = na, text_size = size.tiny)
 else
     if not na(pTbl)
         table.delete(pTbl)
