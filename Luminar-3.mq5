@@ -588,7 +588,7 @@ int DrawSessionLevels(const int cy,const int cm,const int cd,
    if(!(re>vstart && dt<vend))
       return 0;
    MqlRates bars[];
-   const int copied=CopyRates(_Symbol,PERIOD_M1,dt-86400,1440,bars);
+   const int copied=CopyRates(_Symbol,PERIOD_M1,dt-86400,dt-1,bars);
    const int want=MathMin(InpMinM1Bars,1440/2+1);
    if(copied<want)
       return 0;
