@@ -1,4 +1,4 @@
-// Luminar-3 — Pine Script port of the MT5 range EA (v3)
+// Luminar-3 â€” Pine Script port of the MT5 range EA (v3)
 // Uses standard minute candles (M1-M60; M1 matches the EA exactly). Ranges are
 // detected from the bar that crosses each configured NY time boundary.
 // NY time is computed from the chart bar's NY hour/minute (DST handled automatically).
@@ -49,6 +49,7 @@ i_sessLvl = input.bool(true,    "Show previous-session VAH/VAL/POC", group = "05
 i_panel  = input.bool(true,     "Show floating price panel", group = "07 - Price panel", tooltip = "Aggregates chart bars into N-minute buckets (90 min by default) and shows the forming bucket plus the last X closed ones.")
 i_ptf    = input.int(90,        "Panel timeframe (minutes)", minval = 1, maxval = 1440, group = "07 - Price panel")
 i_pprev  = input.int(3,         "Previous candles shown", minval = 0, maxval = 20, group = "07 - Price panel")
+i_plvls  = input.int(12,        "Price levels", minval = 5, maxval = 25, group = "07 - Price panel", tooltip = "Number of price rows in the candle grid. More levels = finer candles, taller panel.")
 i_pos    = input.string("Right", "Panel position", options = ["Right", "Left", "Middle right", "Middle left", "Top", "Bottom", "Top right", "Top left", "Bottom right", "Bottom left"], group = "07 - Price panel")
 
 //----- Style -----
@@ -395,7 +396,7 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
             diff = buys - sells
             ybs = hi + (hi - lo) * 0.03
             rwb = (re - rs) / nz(time - time[1], 60000)
-            s3 = "Δ " + str.tostring(int(math.round(math.abs(diff))))
+            s3 = "Î” " + str.tostring(int(math.round(math.abs(diff))))
             f_regLabel(label.new(int(rs + (re - rs) / 2), ybs, s3, xloc = xloc.bar_time, color = na,
                  textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
                  style = label.style_none, size = f_barSize(rwb)))
@@ -563,6 +564,8 @@ if actI >= 0
 // Aggregates chart bars into i_ptf-minute buckets (epoch-aligned) so any
 // minute chart can show e.g. 90-minute candles. Table updates every bar.
 var table pTbl = na
+var int   pDim   = -1
+var string pPos  = na
 bktSec = int(i_ptf * 60000)
 var int   pBktId   = na
 var float pBktO    = na
@@ -602,42 +605,85 @@ else
     pBktC := close
 
 if i_panel
-    if na(pTbl)
-        pTbl := table.new(f_pos(i_pos), 5, i_pprev + 2, bgcolor = i_pbkg,
+    dim = (i_pprev + 1) * 1000 + i_plvls
+    if na(pTbl) or pDim != dim or pPos != i_pos
+        if not na(pTbl)
+            table.delete(pTbl)
+        pTbl := table.new(f_pos(i_pos), 1 + (i_pprev + 1) * 4, i_plvls + 1, bgcolor = i_pbkg,
              frame_color = i_phead, frame_width = 1, border_color = i_phead, border_width = 1)
-    hdr = array.from("Time", "Open", "High", "Low", "Close")
-    for c = 0 to 4
-        table.cell(pTbl, c, 0, array.get(hdr, c), text_color = i_phead, text_size = size.small)
-    curUp = not na(pBktC) and not na(pBktO) and pBktC >= pBktO
-    clr = curUp ? i_pup : i_pdn
-    table.cell(pTbl, 0, 1, f_btm(pBktId * bktSec), text_color = i_ptext, text_size = size.small)
-    table.cell(pTbl, 1, 1, f_px(pBktO), text_color = clr, text_size = size.small)
-    table.cell(pTbl, 2, 1, f_px(pBktH), text_color = clr, text_size = size.small)
-    table.cell(pTbl, 3, 1, f_px(pBktL), text_color = clr, text_size = size.small)
-    table.cell(pTbl, 4, 1, f_px(pBktC), text_color = clr, text_size = size.small)
+        pDim := dim
+        pPos := i_pos
+        table.cell(pTbl, 0, 0, str.tostring(i_ptf) + "m", text_color = i_phead, text_size = size.tiny, text_halign = text.align_right)
     nC = array.size(pCB)
-    for i = 1 to i_pprev
-        idx = nC - i
+    cOarr = array.new_float()
+    cHarr = array.new_float()
+    cLarr = array.new_float()
+    cCarr = array.new_float()
+    gridHi = pBktH
+    gridLo = pBktL
+    array.push(cOarr, pBktO)
+    array.push(cHarr, pBktH)
+    array.push(cLarr, pBktL)
+    array.push(cCarr, pBktC)
+    for j = 1 to i_pprev
+        idx = nC - j
         if idx >= 0
             base = idx * 4
-            bO = array.get(pC, base)
-            bH = array.get(pC, base + 1)
-            bL = array.get(pC, base + 2)
-            bC = array.get(pC, base + 3)
-            up = bC >= bO
-            wclr = up ? i_pup : i_pdn
-            table.cell(pTbl, 0, 1 + i, f_btm(array.get(pCB, idx) * bktSec), text_color = i_ptext, text_size = size.small)
-            table.cell(pTbl, 1, 1 + i, f_px(bO), text_color = wclr, text_size = size.small)
-            table.cell(pTbl, 2, 1 + i, f_px(bH), text_color = wclr, text_size = size.small)
-            table.cell(pTbl, 3, 1 + i, f_px(bL), text_color = wclr, text_size = size.small)
-            table.cell(pTbl, 4, 1 + i, f_px(bC), text_color = wclr, text_size = size.small)
+            array.push(cOarr, array.get(pC, base))
+            array.push(cHarr, array.get(pC, base + 1))
+            array.push(cLarr, array.get(pC, base + 2))
+            array.push(cCarr, array.get(pC, base + 3))
+            gridHi := math.max(gridHi, array.get(pC, base + 1))
+            gridLo := math.min(gridLo, array.get(pC, base + 2))
         else
-            table.cell(pTbl, 0, 1 + i, "", text_color = i_ptext, text_size = size.small)
-            table.cell(pTbl, 1, 1 + i, "", text_color = i_ptext, text_size = size.small)
-            table.cell(pTbl, 2, 1 + i, "", text_color = i_ptext, text_size = size.small)
-            table.cell(pTbl, 3, 1 + i, "", text_color = i_ptext, text_size = size.small)
-            table.cell(pTbl, 4, 1 + i, "", text_color = i_ptext, text_size = size.small)
+            array.push(cOarr, na)
+            array.push(cHarr, na)
+            array.push(cLarr, na)
+            array.push(cCarr, na)
+    spread = gridHi - gridLo
+    pad = spread > 0 ? spread * 0.06 : syminfo.mintick * 2
+    topP = gridHi + pad
+    botP = gridLo - pad
+    step = (topP - botP) / (i_plvls - 1)
+    for r = 0 to i_plvls - 1
+        p = topP - r * step
+        if r % 2 == 0
+            table.cell(pTbl, 0, 1 + r, f_px(p), text_color = i_ptext, text_size = size.tiny, text_halign = text.align_right)
+        else
+            table.cell(pTbl, 0, 1 + r, "", text_color = i_ptext, text_size = size.tiny)
+        for j = 0 to i_pprev
+            bc = 1 + j * 4
+            if not na(array.get(cCarr, j))
+                o = array.get(cOarr, j)
+                h = array.get(cHarr, j)
+                l = array.get(cLarr, j)
+                c = array.get(cCarr, j)
+                bclr = c >= o ? i_pup : i_pdn
+                wclr = c >= o ? color.new(i_pup, 40) : color.new(i_pdn, 40)
+                bLo = math.min(o, c)
+                bHi = math.max(o, c)
+                inBody = p >= bLo and p <= bHi
+                inWick = p >= l and p <= h
+                table.cell(pTbl, bc, 1 + r, "", text_color = bclr, bgcolor = inBody ? bclr : na, text_size = size.tiny)
+                table.cell(pTbl, bc + 1, 1 + r, "", text_color = bclr, bgcolor = inBody ? bclr : (inWick ? wclr : na), text_size = size.tiny)
+                table.cell(pTbl, bc + 2, 1 + r, "", text_color = bclr, bgcolor = inBody ? bclr : na, text_size = size.tiny)
+            else
+                table.cell(pTbl, bc, 1 + r, "", text_color = i_ptext, bgcolor = na, text_size = size.tiny)
+                table.cell(pTbl, bc + 1, 1 + r, "", text_color = i_ptext, bgcolor = na, text_size = size.tiny)
+                table.cell(pTbl, bc + 2, 1 + r, "", text_color = i_ptext, bgcolor = na, text_size = size.tiny)
+            table.cell(pTbl, bc + 3, 1 + r, "", text_color = i_ptext, bgcolor = na, text_size = size.tiny)
+    for j = 0 to i_pprev
+        th = ""
+        if j == 0
+            th := f_btm(pBktId * bktSec)
+        else
+            idx = nC - j
+            if idx >= 0
+                th := f_btm(array.get(pCB, idx) * bktSec)
+        table.cell(pTbl, 2 + j * 4, 0, th, text_color = i_phead, text_size = size.tiny)
 else
     if not na(pTbl)
         table.delete(pTbl)
         pTbl := na
+        pDim := -1
+        pPos := na
