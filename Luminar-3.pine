@@ -7,52 +7,56 @@
 indicator("Luminar-3 (MT5 Port)", overlay=true,
      max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
-//------------ mirrored EA inputs ------------
+//------------ mirrored EA inputs: "Inputs" (parameters) vs "Style" (colors) ------------
 const color COL_R1 = #1E90FF
 const color COL_R2 = #FFD700
 const color COL_R3 = #00FF00
 const color COL_INS = #A020F0
 
-i_r1s  = input.string("09:00", "Range 1 start (NY)")
-i_r1m  = input.int(90,      "Range 1 length (min)", minval = 1, maxval = 1440)
-i_r1i  = input.string("09:30", "Range 1 inside start (NY)")
-i_r1im = input.int(15,      "Range 1 inside length (min)", minval = 1, maxval = 1440)
-c_r1   = input.color(COL_R1, "Range 1 box color", group = "Range 1")
+//----- Inputs -----
+i_r1s  = input.string("09:00",  "Range 1 start (NY)", group = "Inputs")
+i_r1m  = input.int(90,          "Range 1 length (min)", minval = 1, maxval = 1440, group = "Inputs")
+i_r1i  = input.string("09:30",  "Range 1 inside start (NY)", group = "Inputs")
+i_r1im = input.int(15,          "Range 1 inside length (min)", minval = 1, maxval = 1440, group = "Inputs")
 
-i_r2s  = input.string("03:00", "Range 2 start (NY)")
-i_r2m  = input.int(90,      "Range 2 length (min)", minval = 1, maxval = 1440)
-i_r2i  = input.string("03:00", "Range 2 inside start (NY)")
-i_r2im = input.int(15,      "Range 2 inside length (min)", minval = 1, maxval = 1440)
-c_r2   = input.color(COL_R2, "Range 2 box color", group = "Range 2")
+i_r2s  = input.string("03:00",  "Range 2 start (NY)", group = "Inputs")
+i_r2m  = input.int(90,          "Range 2 length (min)", minval = 1, maxval = 1440, group = "Inputs")
+i_r2i  = input.string("03:00",  "Range 2 inside start (NY)", group = "Inputs")
+i_r2im = input.int(15,          "Range 2 inside length (min)", minval = 1, maxval = 1440, group = "Inputs")
 
-i_r3s  = input.string("21:00", "Range 3 start (NY)")
-i_r3m  = input.int(90,      "Range 3 length (min)", minval = 1, maxval = 1440)
-i_r3i  = input.string("21:00", "Range 3 inside start (NY)")
-i_r3im = input.int(15,      "Range 3 inside length (min)", minval = 1, maxval = 1440)
-c_r3   = input.color(COL_R3, "Range 3 box color", group = "Range 3")
+i_r3s  = input.string("21:00",  "Range 3 start (NY)", group = "Inputs")
+i_r3m  = input.int(90,          "Range 3 length (min)", minval = 1, maxval = 1440, group = "Inputs")
+i_r3i  = input.string("21:00",  "Range 3 inside start (NY)", group = "Inputs")
+i_r3im = input.int(15,          "Range 3 inside length (min)", minval = 1, maxval = 1440, group = "Inputs")
 
-c_inside  = input.color(COL_INS, "Inside box color", group = "Common")
-i_opac    = input.int(55,     "Box transparency %", minval = 0,   maxval = 95, group = "Common")
-c_mid1    = input.color(color.white, "Range mid line color", group = "Common")
-c_mid2    = input.color(color.orange, "Inside mid line color", group = "Common")
-i_showPrev= input.bool(true,  "Show previous ranges (OFF = today only)", group = "Common")
-i_bsVol   = input.bool(true,  "Show buy/sell/delta volumes", group = "Common")
-i_divOn   = input.bool(true,  "Show daily divider line", group = "Common")
-i_divTime = input.string("18:00", "Daily divider time (NY)", group = "Common")
-c_div     = input.color(color.gray, "Divider line color", group = "Common")
-i_binTxt  = input.bool(true,  "Show bin volume values (clutter)", group = "Volume Profile")
-i_txtGap  = input.int(8,      "Bin text left offset (min)", group = "Volume Profile")
-i_txtCw   = input.float(1.4,  "Char width (min/digit, tune for zoom)", group = "Volume Profile")
-i_vplvls  = input.int(20,     "Volume profile price bins", minval = 2, group = "Volume Profile")
-i_vpw     = input.int(60,     "Volume profile max width (min)", minval = 5, group = "Volume Profile")
-i_vptxt   = input.color(color.white, "Volume profile text color", group = "Volume Profile")
-i_vapct   = input.int(70,     "Value area volume % (built around POC)", group = "Volume Profile")
-i_vac     = input.color(color.white, "Value area bin + VAH/VAL label color", group = "Volume Profile")
-i_pocc    = input.color(color.yellow, "Point of control bin + label color", group = "Volume Profile")
-i_sessLvl = input.bool(true, "Prev session (18:00->18:00) VAH/VAL/POC levels", group = "Prev Session Levels")
-i_pval    = input.color(color.aqua, "Prev session VAL level color", group = "Prev Session Levels")
-i_pvah    = input.color(color.fuchsia, "Prev session VAH level color", group = "Prev Session Levels")
-i_ppoc    = input.color(#FF4500, "Prev session POC level color", group = "Prev Session Levels")
+i_showPrev= input.bool(true,    "Show previous ranges (OFF = today only)", group = "Inputs")
+i_bsVol   = input.bool(true,    "Show buy/sell/delta volumes", group = "Inputs")
+i_divOn   = input.bool(true,    "Show daily divider line", group = "Inputs")
+i_divTime = input.string("18:00", "Daily divider time (NY)", group = "Inputs")
+
+i_binTxt  = input.bool(true,    "Show bin volume values (clutter)", group = "Inputs")
+i_txtGap  = input.int(8,        "Bin text left offset (min)", group = "Inputs")
+i_txtCw   = input.float(1.4,    "Char width (min/digit, tune for zoom)", group = "Inputs")
+i_vplvls  = input.int(20,       "Volume profile price bins", minval = 2, group = "Inputs")
+i_vpw     = input.int(60,       "Volume profile max width (min)", minval = 5, group = "Inputs")
+i_vapct   = input.int(70,       "Value area volume % (built around POC)", group = "Inputs")
+i_sessLvl = input.bool(true,    "Prev session (18:00->18:00) VAH/VAL/POC levels", group = "Inputs")
+
+//----- Style -----
+c_r1     = input.color(COL_R1, "Range 1 box color", group = "Style")
+c_r2     = input.color(COL_R2, "Range 2 box color", group = "Style")
+c_r3     = input.color(COL_R3, "Range 3 box color", group = "Style")
+c_inside = input.color(COL_INS, "Inside box color", group = "Style")
+i_opac   = input.int(55,        "Box transparency %", minval = 0, maxval = 95, group = "Style")
+c_mid1   = input.color(color.white, "Range mid line color", group = "Style")
+c_mid2   = input.color(color.orange, "Inside mid line color", group = "Style")
+c_div    = input.color(color.gray, "Divider line color", group = "Style")
+i_vptxt  = input.color(color.white, "Volume profile text color", group = "Style")
+i_vac    = input.color(color.white, "Value area bin + VAH/VAL label color", group = "Style")
+i_pocc   = input.color(color.yellow, "Point of control bin + label color", group = "Style")
+i_pval   = input.color(color.aqua, "Prev session VAL level color", group = "Style")
+i_pvah   = input.color(color.fuchsia, "Prev session VAH level color", group = "Style")
+i_ppoc   = input.color(#FF4500, "Prev session POC level color", group = "Style")
 
 //------------ helpers ------------
 f_parse(s) =>
