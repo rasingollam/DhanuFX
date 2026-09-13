@@ -542,8 +542,9 @@ if actI >= 0
 // Aggregates chart bars into i_ptf-minute buckets. The forming candle
 // and the last X closed ones are drawn as wick + body at real prices,
 // placed by bar count so spacing can never collapse: the block starts
-// (1 + X) candle-widths past the last bar, oldest left, forming right.
-// Redrawn every bar (old objects deleted first, no trails).
+// two candle-widths closer than 1 + X (never before the last bar),
+// oldest left, forming right. Redrawn every bar (old objects deleted
+// first, no trails).
 bktSec = int(i_ptf * 60000)
 var int   pBktId   = na
 var float pBktO    = na
@@ -591,7 +592,7 @@ if i_panel
         line.delete(array.shift(pWicks))
     nC = array.size(pCB)
     slotW = math.max(1, math.round(bktSec / (timeframe.multiplier * 60000)))
-    lead = (1 + i_pprev) * slotW
+    lead = math.max(0, (i_pprev - 1) * slotW)
     for j = 0 to i_pprev
         float o  = na
         float h  = na
