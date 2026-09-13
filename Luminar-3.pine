@@ -50,7 +50,7 @@ i_panel  = input.bool(true,     "Show floating price panel", group = "07 - Price
 i_ptf    = input.int(90,        "Panel timeframe (minutes)", minval = 1, maxval = 1440, group = "07 - Price panel")
 i_pprev  = input.int(3,         "Previous candles shown", minval = 0, maxval = 20, group = "07 - Price panel")
 i_plvls  = input.int(12,        "Price levels", minval = 5, maxval = 25, group = "07 - Price panel", tooltip = "Number of price rows in the candle grid. More levels = finer candles, taller panel.")
-i_pos    = input.string("Right", "Panel position", options = ["Right", "Left", "Middle right", "Middle left", "Top", "Bottom", "Top right", "Top left", "Bottom right", "Bottom left"], group = "07 - Price panel")
+i_pos    = input.string("Top right", "Panel position", options = ["Right", "Left", "Middle right", "Middle left", "Top", "Bottom", "Top right", "Top left", "Bottom right", "Bottom left"], group = "07 - Price panel")
 
 //----- Style -----
 c_r1     = input.color(COL_R1, "Range 1", group = "Style - Ranges", inline = "rangeColors")
