@@ -966,20 +966,3 @@ else
         line.delete(array.shift(pWicks))
     while array.size(pDlt) > 0
         label.delete(array.shift(pDlt))
-
-//=== DEBUG (temporary - remove after fix) ===
-if barstate.islast
-    float dbHi = na
-    float dbLo = na
-    int dbCnt = 0
-    int dq = 1
-    while dq <= 5000 and not na(time[dq]) and time[dq] >= curSessionStart - 86400000
-        if time[dq] < curSessionStart
-            dbHi := na(dbHi) ? high[dq] : math.max(dbHi, high[dq])
-            dbLo := na(dbLo) ? low[dq]  : math.min(dbLo, low[dq])
-            dbCnt += 1
-        dq += 1
-    [dbV, dbA, dbP] = f_sessionPrices(curSessionStart)
-    log.error("DEBUG last_bar_time={0} curSessionStart={1} sessionStart={2} windowBars={3} lo={4} hi={5}", last_bar_time, curSessionStart, sessionStart, dbCnt, dbLo, dbHi)
-    log.error("DEBUG VAL={0} VAH={1} POC={2} sessLvl={3} showPrev={4}", dbV, dbA, dbP, i_sessLvl, i_showPrev)
-    log.error("DEBUG barIdx={0} t100={1} t168={2} t288={3} t400={4} t500={5} t1000={6}", bar_index, time[100], time[168], time[288], time[400], time[500], time[1000])
