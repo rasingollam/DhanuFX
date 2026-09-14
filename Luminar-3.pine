@@ -977,24 +977,3 @@ else
         line.delete(array.shift(pWicks))
     while array.size(pDlt) > 0
         label.delete(array.shift(pDlt))
-
-//=== HTF DEBUG (temporary - remove after fix) ===
-if barstate.islast
-    bs0 = pBktId
-    float tO = na
-    float tH = na
-    float tL = na
-    float tC = na
-    int dq = 1
-    while dq <= 5000 and not na(time[dq]) and time[dq] >= bs0
-        tO := open[dq]
-        tH := na(tH) ? high[dq] : math.max(tH, high[dq])
-        tL := na(tL) ? low[dq]  : math.min(tL, low[dq])
-        tC := close[dq]
-        dq += 1
-    if i_panel
-        log.error("HTFDEBUG tf={0} storedO={1} storedH={2} storedL={3} storedC={4}", timeframe.multiplier, pBktO, pBktH, pBktL, pBktC)
-        log.error("HTFDEBUG trueO={0} trueH={1} trueL={2} trueC={3} curBarO={4}", tO, tH, tL, tC, open)
-        nCx = array.size(pCB)
-        if nCx > 0
-            log.error("HTFDEBUG lastCls O={0} H={1} L={2} C={3}", array.get(pC, (nCx - 1) * 4), array.get(pC, (nCx - 1) * 4 + 1), array.get(pC, (nCx - 1) * 4 + 2), array.get(pC, (nCx - 1) * 4 + 3))
