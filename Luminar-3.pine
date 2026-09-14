@@ -736,6 +736,7 @@ if i_panel
 
     // forming countdown label
     nyMin = hour(timenow, "America/New_York") * 60 + minute(timenow, "America/New_York")
+    nySec = hour(timenow, "America/New_York") * 3600 + minute(timenow, "America/New_York") * 60 + second(timenow, "America/New_York")
     r1S = rh1 * 60 + rm1
     r2S = rh2 * 60 + rm2
     r3S = rh3 * 60 + rm3
@@ -756,8 +757,8 @@ if i_panel
         curN := "R3"
         curE := r3S + i_r3m
     remHtf  = ((pBktId + 1) * bktSec - timenow) / 1000
-    remNext = (nextS - nyMin) * 60
-    remClose = (curE - nyMin) * 60
+    remNext = nextS * 60 - nySec
+    remClose = curE * 60 - nySec
     txt = str.tostring(i_ptf) + "m close: " + f_cnt(remHtf)
     txt += "\n" + nextN + " start: " + f_cnt(remNext)
     if curN != ""
