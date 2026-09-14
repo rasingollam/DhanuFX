@@ -67,6 +67,7 @@ i_midS   = input.string("dotted", "Midline style", options = ["solid", "dotted",
 i_txtGap  = input.int(8,        "Bin text left offset (minutes)", minval = 0, maxval = 120, group = "Style - Volume profile")
 i_txtCw   = input.float(1.4,    "Text spacing (minutes/digit)", minval = 0.1, maxval = 10, step = 0.1, group = "Style - Volume profile")
 i_vpw     = input.int(60,       "Histogram width (minutes)", minval = 5, maxval = 240, group = "Style - Volume profile")
+i_vpgap   = input.int(10,       "Gap from range to histogram (minutes)", minval = 0, maxval = 120, group = "Style - Volume profile")
 i_vptxt  = input.color(color.white, "Volume text", group = "Style - Volume profile")
 i_vac    = input.color(color.white, "Value area / VAH / VAL labels", group = "Style - Volume profile")
 i_pocc   = input.color(color.yellow, "POC / boundary bins", group = "Style - Volume profile")
@@ -448,13 +449,13 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                 vq = array.get(vols, q)
                 if vq > 0
                     wq = int(math.max(1.0, math.round(60000.0 * i_vpw * vq / vmax)))
-                    t1 = rs - wq
+                    t1 = rs - int(i_vpgap * 60000) - wq
                     blo = lo + q * step
                     bhi = lo + (q + 1) * step
                     bclr = (q == poc or q == va_lo or q == va_hi)
                          ? color.new(i_pocc, 35)
                          : (q >= va_lo and q <= va_hi ? color.new(i_vac, 35) : color.new(col, i_opac))
-                    f_regBox(box.new(t1, bhi, rs, blo, xloc = xloc.bar_time,
+                    f_regBox(box.new(t1, bhi, int(rs - int(i_vpgap * 60000)), blo, xloc = xloc.bar_time,
                          border_color = bclr, bgcolor = bclr, border_width = 1))
                     if i_binTxt
                         tv = str.tostring(int(math.round(vq)))
@@ -464,15 +465,15 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                              style = label.style_none, size = size.small))
                     // POC / VAH / VAL word labels centered inside their own bin
                     if q == poc
-                        f_regLabel(label.new(int(rs - wq / 2), (blo + bhi) / 2 - step * 0.4, "POC",
+                        f_regLabel(label.new(int(rs - int(i_vpgap * 60000) - wq / 2), (blo + bhi) / 2 - step * 0.4, "POC",
                              xloc = xloc.bar_time, color = na, textcolor = i_pocc,
                              style = label.style_none, size = size.small))
                     if q == va_hi
-                        f_regLabel(label.new(int(rs - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAH",
+                        f_regLabel(label.new(int(rs - int(i_vpgap * 60000) - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAH",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
                              style = label.style_none, size = size.small))
                     if q == va_lo
-                        f_regLabel(label.new(int(rs - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAL",
+                        f_regLabel(label.new(int(rs - int(i_vpgap * 60000) - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAL",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
                              style = label.style_none, size = size.small))
 // ---- delta spread across the range top ----
@@ -493,7 +494,7 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
             diff = buys - sells
             ybs = hi + (hi - lo) * 0.03
             rwb = (re - rs) / nz(time - time[1], 60000)
-            s3 = "Δ " + str.tostring(int(math.round(math.abs(diff))))
+            s3 = "Î” " + str.tostring(int(math.round(math.abs(diff))))
             f_regLabel(label.new(int(rs + (re - rs) / 2), ybs, s3, xloc = xloc.bar_time, color = na,
                  textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
                  style = label.style_none, size = f_barSize(rwb)))
@@ -788,7 +789,7 @@ else if bkt != pBktId
             dclr2 = dd2 >= 0 ? color.lime : color.red
             ds2 = dd2 >= 0 ? "+" : ""
             xs2 = dx2 >= 0 ? "+" : ""
-            dtxt2 = "B " + f_cvol(bb2) + "  S " + f_cvol(bs2) + "\n   Δ " + ds2 + f_cvol(dd2) + "\n   H " + xs2 + f_cvol(dx2) + "  L " + f_cvol(dn2)
+            dtxt2 = "B " + f_cvol(bb2) + "  S " + f_cvol(bs2) + "\n   Î” " + ds2 + f_cvol(dd2) + "\n   H " + xs2 + f_cvol(dx2) + "  L " + f_cvol(dn2)
             dy2 = dd2 >= 0 ? h2 + syminfo.mintick * 10 : l2 - syminfo.mintick * 10
             ds3 = dd2 >= 0 ? label.style_label_down : label.style_label_up
             array.push(pDlt, label.new(wx2, dy2, dtxt2, xloc = xloc.bar_time, color = color.new(color.black, 25), textcolor = dclr2, style = ds3, size = size.small))
@@ -855,7 +856,7 @@ if i_panel
     dclr0 = dd0 >= 0 ? color.lime : color.red
     dsign0 = dd0 >= 0 ? "+" : ""
     xsign0 = pBktDx >= 0 ? "+" : ""
-    dtxt0 = "B " + f_cvol(pBktB) + "  S " + f_cvol(pBktS) + "\n   Δ " + dsign0 + f_cvol(dd0) + "\n   H " + xsign0 + f_cvol(pBktDx) + "  L " + f_cvol(pBktDn)
+    dtxt0 = "B " + f_cvol(pBktB) + "  S " + f_cvol(pBktS) + "\n   Î” " + dsign0 + f_cvol(dd0) + "\n   H " + xsign0 + f_cvol(pBktDx) + "  L " + f_cvol(pBktDn)
     dy0 = dd0 >= 0 ? pBktH + syminfo.mintick * 10 : pBktL - syminfo.mintick * 10
     ds0 = dd0 >= 0 ? label.style_label_down : label.style_label_up
     if na(fDltLbl)
@@ -955,7 +956,7 @@ if i_panel
                     dclrc = ddc >= 0 ? color.lime : color.red
                     dsc = ddc >= 0 ? "+" : ""
                     xsc = dx >= 0 ? "+" : ""
-                    dtxtc = "B " + f_cvol(bb) + "  S " + f_cvol(bs) + "\n   Δ " + dsc + f_cvol(ddc) + "\n   H " + xsc + f_cvol(dx) + "  L " + f_cvol(dn)
+                    dtxtc = "B " + f_cvol(bb) + "  S " + f_cvol(bs) + "\n   Î” " + dsc + f_cvol(ddc) + "\n   H " + xsc + f_cvol(dx) + "  L " + f_cvol(dn)
                     dyc = ddc >= 0 ? h + syminfo.mintick * 10 : l - syminfo.mintick * 10
                     dsc2 = ddc >= 0 ? label.style_label_down : label.style_label_up
                     label.set_x(array.get(pDlt, ci), wx)
