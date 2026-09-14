@@ -688,9 +688,11 @@ if i_panel
             dsign = dd >= 0 ? "+" : ""
             xsign = dx >= 0 ? "+" : ""
             dtxt = "B " + f_cvol(bb) + " S " + f_cvol(bs) + "\nΔ " + dsign + f_cvol(dd) + "\nH " + xsign + f_cvol(dx) + " L " + f_cvol(dn)
-            array.push(pDlt, label.new(wx, l, dtxt, xloc = xloc.bar_index,
+            dy = dd >= 0 ? h : l
+            ds = dd >= 0 ? label.style_label_down : label.style_label_up
+            array.push(pDlt, label.new(wx, dy, dtxt, xloc = xloc.bar_index,
                  color = color.new(color.black, 25), textcolor = dclr,
-                 style = label.style_label_down, size = size.small))
+                 style = ds, size = size.small))
     // countdown to the forming HTF bucket close, at the current price
     remS = int(math.max(0, ((pBktId + 1) * bktSec - timenow) / 1000))
     hh = int(remS / 3600)
