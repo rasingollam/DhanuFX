@@ -695,7 +695,7 @@ if i_panel
             dsign = dd >= 0 ? "+" : ""
             xsign = dx >= 0 ? "+" : ""
             dtxt = "B " + f_cvol(bb) + "  S " + f_cvol(bs) + "\n   Δ " + dsign + f_cvol(dd) + "\n   H " + xsign + f_cvol(dx) + "  L " + f_cvol(dn)
-            dy = dd >= 0 ? h + syminfo.mintick * 50 : l - syminfo.mintick * 50
+            dy = dd >= 0 ? h + syminfo.mintick * 500 : l - syminfo.mintick * 500
             ds = dd >= 0 ? label.style_label_down : label.style_label_up
             array.push(pDlt, label.new(wx, dy, dtxt, xloc = xloc.bar_index,
                  color = color.new(color.black, 25), textcolor = dclr,
