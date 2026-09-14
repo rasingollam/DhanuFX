@@ -3,7 +3,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026"
 #property link      ""
-#property version   "1.01"
+#property version   "1.04"
 #property strict
 
 //--- Range 1
@@ -14,9 +14,9 @@ input int    R1_inside_mins   =15;        // Range 1 inside length (minutes)
 input color  R1_color         =clrDodgerBlue;  // Range 1 box color
 
 //--- Range 2
-input string R2_start         ="01:30";   // Range 2 start (NY HH:MM)
+input string R2_start         ="03:00";   // Range 2 start (NY HH:MM)
 input int    R2_mins          =90;        // Range 2 length (minutes)
-input string R2_inside_start  ="01:30";   // Range 2 inside start (NY HH:MM)
+input string R2_inside_start  ="03:00";   // Range 2 inside start (NY HH:MM)
 input int    R2_inside_mins   =15;        // Range 2 inside length (minutes)
 input color  R2_color         =clrGold;       // Range 2 box color
 
@@ -29,6 +29,9 @@ input color  R3_color         =clrLime;       // Range 3 box color
 
 //--- Common
 input color  Inside_color       =clrPurple;    // Inside range box color
+input bool   Show_Divider       =true;     // Show daily divider line
+input string Divider_time       ="18:00";  // Daily divider time (NY HH:MM)
+input color  Divider_color      =clrDimGray; // Daily divider line color
 input int    InpBoxOpacity      =115;     // Box opacity (0..255)
 input int    InpMinM1Bars       =30;      // Min M1 bars to accept a window
 input double Server_GMT_offset  =-999;    // Broker GMT offset hours (-999 = auto)
@@ -40,6 +43,10 @@ input color  Profile_TextColor  =clrWhite;  // Volume profile text color
 input int    Value_Area_Pct     =70;      // Value area volume % (built around POC)
 input color  Value_Area_Color   =clrWhite; // Value area bin + VAH/VAL label color
 input color  POC_Color          =clrYellow;// Point of control bin + label color
+input bool   Show_Session_Levels=true;    // Prev session (18:00->18:00) VP VAH/VAL/POC levels
+input color  Sess_VAH_Color      =clrFuchsia;  // Prev session VAH level color
+input color  Sess_VAL_Color      =clrAqua;     // Prev session VAL level color
+input color  Sess_POC_Color      =clrOrangeRed; // Prev session POC level color
 input bool   Show_BuySell_Volume=true;      // Buy/Sell volume + difference below main range
 
 string g_prefix;
@@ -48,8 +55,11 @@ int    g_r2_h,g_r2_m,g_r2_ih,g_r2_im;
 int    g_r3_h,g_r3_m,g_r3_ih,g_r3_im;
 int    g_server_offset=0;
 bool   g_offset_ready=false;
+int    g_div_h=18;
+int    g_div_m=0;
 datetime g_last_render=0;
 long   g_last_range_key=0;
+int    g_params_key=0;
 
 //+------------------------------------------------------------------+
 //| Parse "HH:MM" string into hours/minutes                          |
@@ -560,6 +570,190 @@ void DrawRangePair(const int cy,const int cm,const int cd,
 }
 
 //+------------------------------------------------------------------+
+//| Prev session (18:00->18:00) volume profile levels                |
+//| Session S = NY divider time on date D. The 24h stretch from the  |
+//| PREVIOUS NY divider to S is the volume-profile window; its POC / |
+//| VAH / VAL are drawn as dotted horizontal levels across session S.|
+//+------------------------------------------------------------------+
+int DrawSessionLevels(const int cy,const int cm,const int cd,
+                      const datetime now_server,
+                      const datetime vstart,const datetime vend)
+{
+   if(!Show_Session_Levels)
+      return 0;
+   const datetime dt=NyTimeChart(cy,cm,cd,g_div_h,g_div_m);   // start of session S
+   const datetime re=dt+86400;                                // end of session S
+   if(dt>now_server)                                          // session S not started -> ITS 24h window is incomplete
+      return 0;
+   if(!(re>vstart && dt<vend))
+      return 0;
+   MqlRates bars[];
+   const int copied=CopyRates(_Symbol,PERIOD_M1,dt-86400,dt-1,bars);
+   const int want=MathMin(InpMinM1Bars,1440/2+1);
+   if(copied<want)
+      return 0;
+   double lo=1.0e100;
+   double hi=-1.0e100;
+   for(int b=0;b<copied;b++)
+   {
+      hi=MathMax(hi,bars[b].high);
+      lo=MathMin(lo,bars[b].low);
+   }
+   if(hi<=lo)
+      return 0;
+   const int levels=MathMax(2,Profile_Levels);
+   const double step=(hi-lo)/levels;
+   double bin_lo[],bin_hi[],vol[];
+   ArrayResize(bin_lo,levels);
+   ArrayResize(bin_hi,levels);
+   ArrayResize(vol,levels);
+   ArrayInitialize(vol,0.0);
+   for(int k=0;k<levels;k++)
+   {
+      bin_lo[k]=lo+k*step;
+      bin_hi[k]=lo+(k+1)*step;
+   }
+   for(int b=0;b<copied;b++)
+   {
+      const double h=bars[b].high;
+      const double l=bars[b].low;
+      const double span=h-l;
+      for(int k=0;k<levels;k++)
+      {
+         const double ol=MathMin(h,bin_hi[k])-MathMax(l,bin_lo[k]);
+         if(ol<=0.0)
+            continue;
+         vol[k]+=bars[b].tick_volume*(span>0.0?ol/span:1.0);
+      }
+   }
+   double vmax=0.0;
+   for(int k=0;k<levels;k++)
+      vmax=MathMax(vmax,vol[k]);
+   if(vmax<=0.0)
+      return 0;
+   double total=0.0;
+   for(int k=0;k<levels;k++)
+      total+=vol[k];
+   int poc=0;
+   for(int k=1;k<levels;k++)
+      if(vol[k]>vol[poc])
+         poc=k;
+   int va_lo=poc;
+   int va_hi=poc;
+   if(total>0.0)
+   {
+      double varea_vol=vol[poc];
+      const double target=MathMin(1.0,(double)Value_Area_Pct/100.0)*total;
+      while(varea_vol<target && (va_lo>0 || va_hi<levels-1))
+      {
+         const int above=(va_hi<levels-1)?(int)MathRound(vol[va_hi+1]):-1;
+         const int below=(va_lo>0)?(int)MathRound(vol[va_lo-1]):-1;
+         if(above<0)      { va_lo--; varea_vol+=vol[va_lo]; }
+         else if(below<0) { va_hi++; varea_vol+=vol[va_hi]; }
+         else if(above>=below) { va_hi++; varea_vol+=vol[va_hi]; }
+         else                   { va_lo--; varea_vol+=vol[va_lo]; }
+      }
+   }
+   const double vahi=bin_hi[va_hi];
+   const double valo=bin_lo[va_lo];
+   const double pocp=(bin_lo[poc]+bin_hi[poc])/2.0;
+   const string ymd_s=IntegerToString(YMD(cy,cm,cd));
+   int created=0;
+   const long chart_bg=ChartGetInteger(0,CHART_COLOR_BACKGROUND,0);
+   const color fill=BlendBoxColor(clrGray,chart_bg,InpBoxOpacity);
+   const color va_fill=BlendBoxColor(Sess_VAL_Color,chart_bg,InpBoxOpacity);
+   const color poc_fill=BlendBoxColor(Sess_POC_Color,chart_bg,InpBoxOpacity);
+   const int max_sec=Profile_MaxWidth*60;
+   for(int k=0;k<levels;k++)
+   {
+      if(vol[k]<=0.0)
+         continue;
+      const int w=MathMax(1,(int)MathRound((double)max_sec*vol[k]/vmax));
+      const datetime t1=dt-(datetime)w;
+      const string nm=g_prefix+"SL_"+ymd_s+"_VP"+IntegerToString(k);
+      const color binclr=(k==poc||k==va_lo||k==va_hi?poc_fill:(k>=va_lo&&k<=va_hi?va_fill:fill));
+      if(ObjectCreate(0,nm,OBJ_RECTANGLE,0,t1,bin_lo[k],dt,bin_hi[k]))
+      {
+         ObjectSetInteger(0,nm,OBJPROP_COLOR,binclr);
+         ObjectSetInteger(0,nm,OBJPROP_BGCOLOR,binclr);
+         ObjectSetInteger(0,nm,OBJPROP_FILL,true);
+         ObjectSetInteger(0,nm,OBJPROP_STYLE,STYLE_SOLID);
+         ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
+         ObjectSetInteger(0,nm,OBJPROP_BACK,false);
+         ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
+         ObjectSetInteger(0,nm,OBJPROP_HIDDEN,false);
+         created++;
+         const string txt=IntegerToString((long)MathRound(vol[k]));
+         const double pmax=ChartGetDouble(0,CHART_PRICE_MAX,0);
+         const double pmin=ChartGetDouble(0,CHART_PRICE_MIN,0);
+         const double hpix=(double)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+         const double bin_px=((hi-lo)>0.0 && pmax>pmin && hpix>0.0)
+                              ? step*hpix/(pmax-pmin) : 8.0;
+         const string nmT=nm+"_TXT";
+         int fs=Profile_FontSize;
+         int fh=(int)MathFloor(bin_px*0.7);
+         if(fh>=5)
+            fs=MathMin(fs,fh);
+         if(fs<4)
+            fs=4;
+         const double cy=(bin_lo[k]+bin_hi[k])/2.0;
+         if(ObjectCreate(0,nmT,OBJ_TEXT,0,t1,cy))
+         {
+            ObjectSetString(0,nmT,OBJPROP_TEXT,txt);
+            ObjectSetInteger(0,nmT,OBJPROP_COLOR,Profile_TextColor);
+            ObjectSetInteger(0,nmT,OBJPROP_FONTSIZE,fs);
+            ObjectSetInteger(0,nmT,OBJPROP_ANCHOR,ANCHOR_RIGHT);
+            ObjectSetInteger(0,nmT,OBJPROP_BACK,false);
+            ObjectSetInteger(0,nmT,OBJPROP_SELECTABLE,false);
+            ObjectSetInteger(0,nmT,OBJPROP_HIDDEN,false);
+            created++;
+         }
+      }
+   }
+   const string lv_nm[3]={"VAH","VAL","POC"};
+   const double lv_pr[3]={vahi,valo,pocp};
+   const color  lv_cl[3]={Sess_VAH_Color,Sess_VAL_Color,Sess_POC_Color};
+   for(int k=0;k<3;k++)
+   {
+      const string nm=g_prefix+"SL_"+ymd_s+"_"+lv_nm[k];
+      DrawDottedLevel(nm,dt,re,lv_pr[k],lv_cl[k],STYLE_DOT,"Prev session "+lv_nm[k]);
+      const string nmT=nm+"_TXT";
+      if(ObjectCreate(0,nmT,OBJ_TEXT,0,re,lv_pr[k]))
+      {
+         ObjectSetString(0,nmT,OBJPROP_TEXT,lv_nm[k]);
+         ObjectSetInteger(0,nmT,OBJPROP_COLOR,lv_cl[k]);
+         ObjectSetInteger(0,nmT,OBJPROP_FONTSIZE,Profile_FontSize+1);
+         ObjectSetInteger(0,nmT,OBJPROP_ANCHOR,ANCHOR_LEFT);
+         ObjectSetInteger(0,nmT,OBJPROP_BACK,false);
+         ObjectSetInteger(0,nmT,OBJPROP_SELECTABLE,false);
+         ObjectSetInteger(0,nmT,OBJPROP_HIDDEN,false);
+         created++;
+      }
+   }
+   created+=3;
+   return created;
+}
+
+//+------------------------------------------------------------------+
+//| Draw a vertical daily divider for a given NY date                |
+//+------------------------------------------------------------------+
+void DrawDayDivider(const int cy,const int cm,const int cd)
+{
+   if(!Show_Divider)
+      return;
+   const datetime dt=NyTimeChart(cy,cm,cd,g_div_h,g_div_m);
+   const string nm=g_prefix+"DIV_"+IntegerToString(YMD(cy,cm,cd));
+   if(!ObjectCreate(0,nm,OBJ_VLINE,0,dt,0))
+      return;
+   ObjectSetInteger(0,nm,OBJPROP_COLOR,Divider_color);
+   ObjectSetInteger(0,nm,OBJPROP_STYLE,STYLE_DASH);
+   ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
+   ObjectSetInteger(0,nm,OBJPROP_BACK,false);
+   ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,nm,OBJPROP_HIDDEN,false);
+}
+
+//+------------------------------------------------------------------+
 //| Render all range boxes for all visible NY days                   |
 //+------------------------------------------------------------------+
 void RenderBoxes()
@@ -608,6 +802,8 @@ void RenderBoxes()
                     R2_color,now_server,vstart,vend,created);
       DrawRangePair(cy,cm,cd,g_r3_h,g_r3_m,R3_mins,g_r3_ih,g_r3_im,R3_inside_mins,
                     R3_color,now_server,vstart,vend,created);
+      created+=DrawSessionLevels(cy,cm,cd,now_server,vstart,vend);
+      DrawDayDivider(cy,cm,cd);
       dt.day+=1;
       cursor=StructToTime(dt);
    }
@@ -619,6 +815,46 @@ void RenderBoxes()
             " | offset ",g_server_offset,"s | objects ",created);
    }
    ChartRedraw(0);
+}
+
+//+------------------------------------------------------------------+
+//| FNV-1a hash of all inputs that affect rendering                  |
+//| Returns a different value whenever any relevant input changes.   |
+//+------------------------------------------------------------------+
+int ParamsKey()
+{
+   ulong h=2166136261UL;
+   const ulong FNV=16777619UL;
+   const ulong k[]=
+      {
+      (ulong)g_r1_h,    (ulong)g_r1_m,   (ulong)g_r1_ih,     (ulong)g_r1_im,
+      (ulong)g_r2_h,    (ulong)g_r2_m,   (ulong)g_r2_ih,     (ulong)g_r2_im,
+      (ulong)g_r3_h,    (ulong)g_r3_m,   (ulong)g_r3_ih,     (ulong)g_r3_im,
+      (ulong)R1_mins,   (ulong)R1_inside_mins,
+      (ulong)R2_mins,   (ulong)R2_inside_mins,
+      (ulong)R3_mins,   (ulong)R3_inside_mins,
+      (ulong)InpBoxOpacity,
+      (ulong)InpMinM1Bars,
+      (ulong)(long)R1_color,   (ulong)(long)R2_color,   (ulong)(long)R3_color,
+      (ulong)(long)Inside_color,
+      (ulong)Profile_Levels,   (ulong)Profile_MaxWidth, (ulong)Profile_FontSize,
+      (ulong)(long)Profile_TextColor,
+      (ulong)Value_Area_Pct,
+      (ulong)(long)Value_Area_Color, (ulong)(long)POC_Color,
+      (Show_Previous_Ranges?1UL:0UL),
+      (Show_BuySell_Volume?1UL:0UL),
+      (Show_Session_Levels?1UL:0UL),
+      (ulong)(long)Sess_VAH_Color, (ulong)(long)Sess_VAL_Color, (ulong)(long)Sess_POC_Color,
+      (Show_Divider?1UL:0UL),
+      (ulong)g_div_h,  (ulong)g_div_m,
+      (ulong)(long)Divider_color
+      };
+   for(int i=0;i<ArraySize(k);i++)
+   {
+      h^=k[i];
+      h*=FNV;
+   }
+   return (int)(h^((ulong)Server_GMT_offset*3600UL));
 }
 
 //+------------------------------------------------------------------+
@@ -643,10 +879,13 @@ int OnInit()
    { Print("Range minutes must be 1..1440"); return INIT_PARAMETERS_INCORRECT; }
    if(R1_inside_mins<1||R1_inside_mins>1440||R2_inside_mins<1||R2_inside_mins>1440||R3_inside_mins<1||R3_inside_mins>1440)
    { Print("Inside minutes must be 1..1440"); return INIT_PARAMETERS_INCORRECT; }
+   if(!ParseTimeStr(Divider_time,g_div_h,g_div_m))
+   { Print("Invalid Divider_time (expected HH:MM NY)"); return INIT_PARAMETERS_INCORRECT; }
    if(InpMinM1Bars<1)
       return INIT_PARAMETERS_INCORRECT;
    if(Server_GMT_offset!=-999 && (Server_GMT_offset<-12.0 || Server_GMT_offset>14.0))
    { Print("Invalid Server_GMT_offset"); return INIT_PARAMETERS_INCORRECT; }
+   g_params_key=ParamsKey();
    RenderBoxes();
    return(INIT_SUCCEEDED);
 }
@@ -665,6 +904,15 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   const int pk=ParamsKey();
+   if(pk!=g_params_key)
+   {
+      g_params_key=pk;
+      g_last_render=0;
+      Print("Luminar3 input change detected - clearing and redrawing all ranges");
+      RenderBoxes();
+      return;
+   }
    if(TimeCurrent()-g_last_render>=30)
    {
       g_last_render=TimeCurrent();

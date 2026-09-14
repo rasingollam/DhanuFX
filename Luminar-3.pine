@@ -1,59 +1,154 @@
-// Luminar-3 — Pine Script port of the MT5 range EA (v3)
-// Run on an intraday chart; use M1 so aggregation matches the MQL5 M1 logic.
+// Luminar-3 - Pine Script port of the MT5 range EA (v3)
+// Uses standard minute candles (M1-M60; M1 matches the EA exactly). Ranges are
+// detected from the bar that crosses each configured NY time boundary.
 // NY time is computed from the chart bar's NY hour/minute (DST handled automatically).
 // NOTE: Pine time is in milliseconds; all window/length arithmetic uses ms.
 
-//@version=5
-indicator("Luminar-3 (MT5 Port)", overlay=true,
-     max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+//@version=6
+indicator("Luminar-3", overlay=true,
+     max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=5000)
 
-//------------ mirrored EA inputs ------------
+// Object appearance uses Inputs. Native Style tab provides Boxes/Lines/Pane visibility toggles.
 const color COL_R1 = #1E90FF
 const color COL_R2 = #FFD700
 const color COL_R3 = #00FF00
 const color COL_INS = #A020F0
 
-i_r1s  = input.string("09:00", "Range 1 start (NY)")
-i_r1m  = input.int(90,      "Range 1 length (min)", minval = 1, maxval = 1440)
-i_r1i  = input.string("09:30", "Range 1 inside start (NY)")
-i_r1im = input.int(15,      "Range 1 inside length (min)", minval = 1, maxval = 1440)
-c_r1   = input.color(COL_R1, "Range 1 box color", group = "Range 1")
+//----- Inputs -----
+i_r1s  = input.string("09:00",  "Start (NY, HH:mm)", group = "01 - Range 1")
+i_r1m  = input.int(90,          "Length (minutes)", minval = 1, maxval = 1440, group = "01 - Range 1")
+i_r1i  = input.string("09:30",  "Inside start (NY, HH:mm)", group = "01 - Range 1")
+i_r1im = input.int(15,          "Inside length (minutes)", minval = 1, maxval = 1440, group = "01 - Range 1")
 
-i_r2s  = input.string("01:30", "Range 2 start (NY)")
-i_r2m  = input.int(90,      "Range 2 length (min)", minval = 1, maxval = 1440)
-i_r2i  = input.string("01:30", "Range 2 inside start (NY)")
-i_r2im = input.int(15,      "Range 2 inside length (min)", minval = 1, maxval = 1440)
-c_r2   = input.color(COL_R2, "Range 2 box color", group = "Range 2")
+i_r2s  = input.string("03:00",  "Start (NY, HH:mm)", group = "02 - Range 2")
+i_r2m  = input.int(90,          "Length (minutes)", minval = 1, maxval = 1440, group = "02 - Range 2")
+i_r2i  = input.string("03:00",  "Inside start (NY, HH:mm)", group = "02 - Range 2")
+i_r2im = input.int(15,          "Inside length (minutes)", minval = 1, maxval = 1440, group = "02 - Range 2")
 
-i_r3s  = input.string("21:00", "Range 3 start (NY)")
-i_r3m  = input.int(90,      "Range 3 length (min)", minval = 1, maxval = 1440)
-i_r3i  = input.string("21:00", "Range 3 inside start (NY)")
-i_r3im = input.int(15,      "Range 3 inside length (min)", minval = 1, maxval = 1440)
-c_r3   = input.color(COL_R3, "Range 3 box color", group = "Range 3")
+i_r3s  = input.string("21:00",  "Start (NY, HH:mm)", group = "03 - Range 3")
+i_r3m  = input.int(90,          "Length (minutes)", minval = 1, maxval = 1440, group = "03 - Range 3")
+i_r3i  = input.string("21:00",  "Inside start (NY, HH:mm)", group = "03 - Range 3")
+i_r3im = input.int(15,          "Inside length (minutes)", minval = 1, maxval = 1440, group = "03 - Range 3")
 
-c_inside  = input.color(COL_INS, "Inside box color", group = "Common")
-i_opac    = input.int(55,     "Box transparency %", minval = 0,   maxval = 95, group = "Common")
-c_mid1    = input.color(color.white, "Range mid line color", group = "Common")
-c_mid2    = input.color(color.orange, "Inside mid line color", group = "Common")
-i_showPrev= input.bool(true,  "Show previous ranges (OFF = today only)", group = "Common")
-i_bsVol   = input.bool(true,  "Show buy/sell/delta volumes", group = "Common")
-i_binTxt  = input.bool(true,  "Show bin volume values (clutter)", group = "Volume Profile")
-i_txtGap  = input.int(8,      "Bin text left offset (min)", group = "Volume Profile")
-i_txtCw   = input.float(1.4,  "Char width (min/digit, tune for zoom)", group = "Volume Profile")
-i_vplvls  = input.int(20,     "Volume profile price bins", minval = 2, group = "Volume Profile")
-i_vpw     = input.int(60,     "Volume profile max width (min)", minval = 5, group = "Volume Profile")
-i_vptxt   = input.color(color.white, "Volume profile text color", group = "Volume Profile")
-i_vapct   = input.int(70,     "Value area volume % (built around POC)", group = "Volume Profile")
-i_vac     = input.color(color.white, "Value area bin + VAH/VAL label color", group = "Volume Profile")
-i_pocc    = input.color(color.yellow, "Point of control bin + label color", group = "Volume Profile")
+i_showPrev = input.bool(true,    "Show historical drawings", group = "04 - Display", tooltip = "ON keeps all drawings. OFF shows only drawings whose range/session starts after the last NY divider (current session). Object limits can also trim the oldest drawings.")
+i_showR1 = input.bool(true,     "Show Range 1", group = "04 - Display", tooltip = "Range 1 boxes plus high/low/mid lines.")
+i_showR2 = input.bool(true,     "Show Range 2", group = "04 - Display", tooltip = "Range 2 boxes plus high/low/mid lines.")
+i_showR3 = input.bool(true,     "Show Range 3", group = "04 - Display", tooltip = "Range 3 boxes plus high/low/mid lines.")
+i_showInside = input.bool(true, "Show inside ranges", group = "04 - Display", tooltip = "Inside-range boxes and their high/mid/low lines. Hidden when the parent Range 1/2/3 is switched off.")
+i_showRPV    = input.bool(true,  "Show range volume profile (PV)", group = "04 - Display", tooltip = "Per-range volume histogram with bin values and POC/VAH/VAL labels.")
+i_delta = input.bool(true,     "Show estimated delta", group = "04 - Display", tooltip = "Delta = estimated buy minus sell volume from candle direction; not exchange bid/ask order-flow. Excluded when a range has no volume.")
+i_divOn   = input.bool(true,    "Show daily divider line", group = "05 - Session")
+i_divTime = input.string("18:00", "Session boundary (NY, HH:mm)", group = "05 - Session", tooltip = "Levels use the preceding fixed 24 hours. New York clock changes are handled by the timezone; the lookback is always 24 elapsed hours.")
+
+i_binTxt  = input.bool(true,    "Show bin volume values", group = "06 - Volume profile")
+i_vplvls  = input.int(20,       "Price bins", minval = 2, maxval = 100, group = "06 - Volume profile", tooltip = "Shared by range histograms and previous-session levels. Volume is distributed uniformly across each bar's high-low span.")
+i_vapct   = input.int(70,       "Value area volume (%)", minval = 1, maxval = 100, group = "06 - Volume profile")
+i_sessLvl = input.bool(true,    "Show previous-session VAH/VAL/POC", group = "05 - Session")
+
+//----- HTF candle overlay -----
+i_panel  = input.bool(true,     "Show HTF candle overlay", group = "07 - HTF candles", tooltip = "Draws the forming N-minute candle (90 by default) plus the last X closed ones directly on the chart at real prices, like a Power of Three HTF overlay.")
+i_ptf    = input.int(90,        "Candle timeframe (minutes)", minval = 1, maxval = 1440, group = "07 - HTF candles")
+i_htfAnchor = input.string("01:30", "Candle open time (NY, HH:mm)", group = "07 - HTF candles", tooltip = "Anchors the i_ptf-minute candle grid so one candle opens exactly at this NY time. Default 01:30 = the 01:30->03:00 candle whose open you were comparing.")
+i_pprev  = input.int(3,         "Previous candles shown", minval = 0, maxval = 20, group = "07 - HTF candles")
+
+//----- Style -----
+c_r1     = input.color(COL_R1, "Range 1", group = "Style - Ranges", inline = "rangeColors")
+c_r2     = input.color(COL_R2, "Range 2", group = "Style - Ranges", inline = "rangeColors")
+c_r3     = input.color(COL_R3, "Range 3", group = "Style - Ranges", inline = "rangeColors")
+c_inside = input.color(COL_INS, "Inside box", group = "Style - Ranges")
+i_opac   = input.int(55,        "Box transparency (%)", minval = 0, maxval = 100, group = "Style - Ranges")
+c_mid1   = input.color(color.white, "Range midpoint", group = "Style - Ranges")
+c_mid2   = input.color(color.orange, "Inside midpoint", group = "Style - Ranges")
+i_bxW    = input.int(1,        "Range box border (px)", minval = 0, maxval = 10, group = "Style - Ranges")
+i_hlW    = input.int(1,        "High/low line thickness (px)", minval = 1, maxval = 10, group = "Style - Ranges")
+i_hlS    = input.string("solid", "High/low line style", options = ["solid", "dotted", "dashed"], group = "Style - Ranges")
+i_midW   = input.int(1,        "Midline thickness (px)", minval = 1, maxval = 10, group = "Style - Ranges")
+i_midS   = input.string("dotted", "Midline style", options = ["solid", "dotted", "dashed"], group = "Style - Ranges")
+i_txtGap  = input.int(8,        "Bin text left offset (minutes)", minval = 0, maxval = 120, group = "Style - Volume profile")
+i_txtCw   = input.float(1.4,    "Text spacing (minutes/digit)", minval = 0.1, maxval = 10, step = 0.1, group = "Style - Volume profile")
+i_vpw     = input.int(60,       "Histogram width (minutes)", minval = 5, maxval = 240, group = "Style - Volume profile")
+i_vpgap   = input.int(10,       "Gap from range to histogram (minutes)", minval = 0, maxval = 120, group = "Style - Volume profile")
+i_vptxt  = input.color(color.white, "Volume text", group = "Style - Volume profile")
+i_vac    = input.color(color.white, "Value area / VAH / VAL labels", group = "Style - Volume profile")
+i_pocc   = input.color(color.yellow, "POC / boundary bins", group = "Style - Volume profile")
+c_div    = input.color(color.gray, "Divider", group = "Style - Session")
+i_pval   = input.color(color.aqua, "VAL", group = "Style - Session", inline = "sessionColors")
+i_pvah   = input.color(color.fuchsia, "VAH", group = "Style - Session", inline = "sessionColors")
+i_ppoc   = input.color(#FF4500, "POC", group = "Style - Session", inline = "sessionColors")
+i_szLvl  = input.string("normal", "VAH/VAL/POC label size", options = ["tiny", "small", "normal", "large", "huge"], group = "Style - Session")
+i_szW    = input.int(1,        "VAH/VAL/POC line thickness (px)", minval = 1, maxval = 10, group = "Style - Session")
+i_szS    = input.string("dotted", "VAH/VAL/POC line style", options = ["solid", "dotted", "dashed"], group = "Style - Session")
+
+//----- Style - HTF candles -----
+i_pup    = input.color(color.lime, "Up candles", group = "Style - HTF candles")
+i_pdn    = input.color(color.red, "Down candles", group = "Style - HTF candles")
+i_pfill  = input.int(30,        "Body fill transparency (%)", minval = 0, maxval = 90, group = "Style - HTF candles")
 
 //------------ helpers ------------
+// Standard helpers
+f_lstyle(s) =>
+    s == "dotted" ? line.style_dotted : s == "dashed" ? line.style_dashed : line.style_solid
+
+f_lsize(s) =>
+    s == "tiny" ? size.tiny : s == "small" ? size.small : s == "normal" ? size.normal : s == "large" ? size.large : size.huge
+
 f_parse(s) =>
     p = str.split(s, ":")
-    ok = array.size(p) >= 2
+    ok = array.size(p) == 2 and str.length(s) == 5
+    if ok
+        ok := str.length(array.get(p, 0)) == 2 and str.length(array.get(p, 1)) == 2
     h = ok ? str.tonumber(array.get(p, 0)) : na
     m = ok ? str.tonumber(array.get(p, 1)) : na
-    [h, m]
+    if na(h) or na(m)
+        runtime.error("Invalid NY time '" + s + "'. Use HH:mm, for example 09:30.")
+    if h < 0 or h > 23 or m < 0 or m > 59 or h != math.floor(h) or m != math.floor(m)
+        runtime.error("Invalid NY time '" + s + "'. Hours must be 00-23 and minutes 00-59.")
+    [int(h), int(m)]
+
+// Circular clock intervals: touching endpoints are allowed; overlapping main
+// windows are not supported by this renderer's single active-range state.
+f_overlap(a, aLen, b, bLen) =>
+    (b - a + 1440) % 1440 < aLen or (a - b + 1440) % 1440 < bLen
+
+// Shared range/session volume allocation. A flat candle belongs to exactly one
+// bin (including the uppermost price); missing volume contributes nothing.
+f_addVolume(vols, base, step, h, l, v) =>
+    if not na(v) and v > 0 and h >= l and step > 0
+        levels = array.size(vols)
+        if h == l
+            q = math.max(0, math.min(levels - 1, int(math.floor((l - base) / step))))
+            array.set(vols, q, array.get(vols, q) + v)
+        else
+            for q = 0 to levels - 1
+                blo = base + q * step
+                bhi = base + (q + 1) * step
+                overlap = math.min(h, bhi) - math.max(l, blo)
+                if overlap > 0
+                    array.set(vols, q, array.get(vols, q) + v * overlap / (h - l))
+    vols
+
+f_sessionStart(t, h, m) =>
+    yy = year(t, "America/New_York")
+    mm = month(t, "America/New_York")
+    dd = dayofmonth(t, "America/New_York")
+    boundary = timestamp("America/New_York", yy, mm, dd, h, m)
+    t >= boundary ? boundary : timestamp("America/New_York", yy, mm, dd - 1, h, m)
+
+// Next upcoming boundary (strictly after t) at hh:mm on t's NY date, else the next NY day.
+f_sessionNext(t, h, m) =>
+    yy = year(t, "America/New_York")
+    mm = month(t, "America/New_York")
+    dd = dayofmonth(t, "America/New_York")
+    boundary = timestamp("America/New_York", yy, mm, dd, h, m)
+    t < boundary ? boundary : timestamp("America/New_York", yy, mm, dd + 1, h, m)
+
+// Boundary of *today* (in the bar's NY date) at hh:mm; used for start detection.
+f_nyBoundary(t, h, m) =>
+    timestamp("America/New_York", year(t, "America/New_York"), month(t, "America/New_York"), dayofmonth(t, "America/New_York"), h, m)
+
+// True on the first bar at/after a boundary when the previous bar was before it.
+f_crossed(prevT, curT, boundary) =>
+    not na(prevT) and prevT < boundary and curT >= boundary
 
 f_arrMax(a) =>
     float m = na
@@ -73,10 +168,6 @@ f_arrMin(a) =>
                 m := v
     m
 
-f_nyDateKey(t) =>
-    ts = int(t)
-    na(ts) ? -1 : year(ts, "America/New_York") * 10000 + month(ts, "America/New_York") * 100 + dayofmonth(ts, "America/New_York")
-
 // label size auto-selected from how many chart bars fit across the range
 // (doubled step: tiny->small, small->normal, normal->large)
 f_barSize(rw_bars) =>
@@ -89,6 +180,138 @@ f_barSize(rw_bars) =>
         s := size.small
     s
 
+// compact volume text: 1500 -> 1.5K, -2500000 -> -2.5M
+f_cvol(v) =>
+    a = math.abs(v)
+    sg = v < 0 ? "-" : ""
+    r = a >= 1000000 ? sg + str.tostring(a / 1000000, "#.#") + "M" : a >= 1000 ? sg + str.tostring(a / 1000, "#.#") + "K" : sg + str.tostring(int(math.round(a)))
+    r
+
+// format seconds as HH:MM:SS
+f_cnt(sec) =>
+    hh = int(math.max(0, sec) / 3600)
+    mm = int(math.max(0, sec) % 3600 / 60)
+    ss = int(math.max(0, sec)) % 60
+    (hh < 10 ? "0" : "") + str.tostring(hh) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm) + ":" + (ss < 10 ? "0" : "") + str.tostring(ss)
+
+//------------ FIFO garbage collection (deterministic, stays under the 500 hard cap) ------------
+// Register each object so explicit deletion and budgets stay synchronized.
+// Retention depends on bin count and label settings; it is not a fixed day count.
+const int OCAP_BOX = 480
+const int OCAP_LIN = 480
+const int OCAP_LBL = 480
+var array<box>   g_boxes  = array.new_box()
+var array<line>  g_lines  = array.new_line()
+var array<label> g_labels = array.new_label()
+
+f_regBox(b) =>
+    array.push(g_boxes, b)
+    if array.size(g_boxes) > OCAP_BOX
+        box.delete(array.get(g_boxes, 0))
+        array.shift(g_boxes)
+    b
+
+f_regLine(l) =>
+    array.push(g_lines, l)
+    if array.size(g_lines) > OCAP_LIN
+        line.delete(array.get(g_lines, 0))
+        array.shift(g_lines)
+    l
+
+f_regLabel(t) =>
+    array.push(g_labels, t)
+    if array.size(g_labels) > OCAP_LBL
+        label.delete(array.get(g_labels, 0))
+        array.shift(g_labels)
+    t
+
+// POC/VAH/VAL of the previous daily range for session S. Preferred window is
+// [S-24 elapsed hours, S). If that window has no bars (e.g. a Monday after a
+// closed weekend), step back one day at a time up to maxDays to use the most
+// recent trading day instead.
+// Returns [valPrice, vahPrice, pocPrice]; all na if no window has bars.
+f_sessionPrices(S, maxDays = 4) =>
+    float pVal = na
+    float pVah = na
+    float pPoc = na
+    float ssHi = na
+    float ssLo = na
+    int wDays = 1
+    while na(ssHi) and wDays <= maxDays
+        wa = S - 86400000 * wDays
+        wb = S - 86400000 * (wDays - 1)
+        ssHi := na
+        ssLo := na
+        int qt = 1
+        while qt <= 3000 and not na(time[qt]) and time[qt] >= wa
+            if time[qt] < wb
+                ssHi := na(ssHi) ? high[qt] : math.max(ssHi, high[qt])
+                ssLo := na(ssLo) ? low[qt]  : math.min(ssLo, low[qt])
+            qt += 1
+        if not na(ssHi) and not na(ssLo) and ssHi > ssLo
+            sLevels2 = math.max(2, i_vplvls)
+            sStep2   = (ssHi - ssLo) / sLevels2
+            sVols2   = array.new_float(sLevels2, 0.0)
+            qt := 1
+            while qt <= 3000 and not na(time[qt]) and time[qt] >= wa
+                if time[qt] < wb
+                    f_addVolume(sVols2, ssLo, sStep2, high[qt], low[qt], volume[qt])
+                qt += 1
+            sVmax2 = f_arrMax(sVols2)
+            if not na(sVmax2) and sVmax2 > 0
+                sTotal2 = 0.0
+                for q = 0 to sLevels2 - 1
+                    sTotal2 += array.get(sVols2, q)
+                int sPoc2 = 0
+                for q = 1 to sLevels2 - 1
+                    if array.get(sVols2, q) > array.get(sVols2, sPoc2)
+                        sPoc2 := q
+                sVaLo2 = sPoc2
+                sVaHi2 = sPoc2
+                if sTotal2 > 0
+                    sVarea2 = array.get(sVols2, sPoc2)
+                    sTar2 = math.min(1.0, i_vapct / 100.0) * sTotal2
+                    while sVarea2 < sTar2 and (sVaLo2 > 0 or sVaHi2 < sLevels2 - 1)
+                        sAbove2 = sVaHi2 < sLevels2 - 1 ? array.get(sVols2, sVaHi2 + 1) : -1.0
+                        sBelow2 = sVaLo2 > 0            ? array.get(sVols2, sVaLo2 - 1) : -1.0
+                        if sAbove2 < 0
+                            sVaLo2 -= 1
+                            sVarea2 += array.get(sVols2, sVaLo2)
+                        else if sBelow2 < 0
+                            sVaHi2 += 1
+                            sVarea2 += array.get(sVols2, sVaHi2)
+                        else if sAbove2 >= sBelow2
+                            sVaHi2 += 1
+                            sVarea2 += array.get(sVols2, sVaHi2)
+                        else
+                            sVaLo2 -= 1
+                            sVarea2 += array.get(sVols2, sVaLo2)
+                pVal := ssLo + sVaLo2 * sStep2
+                pVah := ssLo + (sVaHi2 + 1) * sStep2
+                pPoc := ssLo + (sPoc2 + 0.5) * sStep2
+        wDays += 1
+    [pVal, pVah, pPoc]
+
+// Draw one session's POC/VAH/VAL dotted lines + labels across [S, S+24h).
+f_drawLevelLines(S, vv, ah, pp) =>
+    if not na(vv) and not na(ah) and not na(pp)
+        endT = S + 86400000
+        f_regLine(line.new(S, vv, endT, vv, xloc.bar_time, color = i_pval, style = f_lstyle(i_szS), width = i_szW))
+        f_regLabel(label.new(S, vv, "VAL", xloc = xloc.bar_time, color = na,
+             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl)))
+        f_regLabel(label.new(endT, vv, "VAL", xloc = xloc.bar_time, color = na,
+             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl)))
+        f_regLine(line.new(S, ah, endT, ah, xloc.bar_time, color = i_pvah, style = f_lstyle(i_szS), width = i_szW))
+        f_regLabel(label.new(S, ah, "VAH", xloc = xloc.bar_time, color = na,
+             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl)))
+        f_regLabel(label.new(endT, ah, "VAH", xloc = xloc.bar_time, color = na,
+             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl)))
+        f_regLine(line.new(S, pp, endT, pp, xloc.bar_time, color = i_ppoc, style = f_lstyle(i_szS), width = i_szW))
+        f_regLabel(label.new(S, pp, "POC", xloc = xloc.bar_time, color = na,
+             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl)))
+        f_regLabel(label.new(endT, pp, "POC", xloc = xloc.bar_time, color = na,
+             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl)))
+
 //------------ range configuration (parsed once) ------------
 [rh1, rm1]   = f_parse(i_r1s)
 [rih1, rim1] = f_parse(i_r1i)
@@ -96,19 +319,25 @@ f_barSize(rw_bars) =>
 [rih2, rim2] = f_parse(i_r2i)
 [rh3, rm3]   = f_parse(i_r3s)
 [rih3, rim3] = f_parse(i_r3i)
+[divh, divm] = f_parse(i_divTime)
 
-//------------ per-bar NY detection (start minute match) ------------
-nyh = hour(time, "America/New_York")
-nym = minute(time, "America/New_York")
+if barstate.isfirst
+    if not chart.is_standard or not timeframe.isminutes or timeframe.multiplier < 1 or timeframe.multiplier > 60
+        runtime.error("Luminar-3 works on standard minute charts from M1 to M60. Use M1 for the exact range/session windows of the MT5 EA.")
+    mainStarts = array.from(rh1 * 60 + rm1, rh2 * 60 + rm2, rh3 * 60 + rm3)
+    insideStarts = array.from(rih1 * 60 + rim1, rih2 * 60 + rim2, rih3 * 60 + rim3)
+    mainLengths = array.from(i_r1m, i_r2m, i_r3m)
+    insideLengths = array.from(i_r1im, i_r2im, i_r3im)
+    for k = 0 to 2
+        insideOffset = (array.get(insideStarts, k) - array.get(mainStarts, k) + 1440) % 1440
+        if insideOffset + array.get(insideLengths, k) > array.get(mainLengths, k)
+            runtime.error("Inside range " + str.tostring(k + 1) + " must fit within its main range.")
+    for a = 0 to 1
+        for b = a + 1 to 2
+            if f_overlap(array.get(mainStarts, a), array.get(mainLengths, a), array.get(mainStarts, b), array.get(mainLengths, b))
+                runtime.error("Main ranges " + str.tostring(a + 1) + " and " + str.tostring(b + 1) + " overlap. Use non-overlapping windows.")
 
-rS    = array.from(
-     nyh == rh1 and nym == rm1 ? time : na,
-     nyh == rh2 and nym == rm2 ? time : na,
-     nyh == rh3 and nym == rm3 ? time : na)
-rIS   = array.from(
-     nyh == rih1 and nym == rim1 ? time : na,
-     nyh == rih2 and nym == rim2 ? time : na,
-     nyh == rih3 and nym == rim3 ? time : na)
+//------------ per-bar NY date (used for today's ranges) ------------
 nMain = array.from(i_r1m, i_r2m, i_r3m)
 nIn   = array.from(i_r1im, i_r2im, i_r3im)
 cMain = array.from(c_r1, c_r2, c_r3)
@@ -129,24 +358,36 @@ var int     g_inIdx     = -1
 var int     g_inMainRs  = na
 var int     g_inMainRe  = na
 var int     g_inLineEnd = na
-var array<int>  g_lastRs = array.new_int(3, 0)
+var array<int>  g_lastRs = array.new_int(3, na)
 var array<float> g_iH = array.new_float()
 var array<float> g_iL = array.new_float()
 var array<float> g_iV = array.new_float()
 
-bt   = time             // bar open (ms) = window start when NY minute matches
-todayKey = f_nyDateKey(bt)
+bt        = time             // current bar open (ms), the window anchor when a boundary is crossed
+curSessionStart = f_sessionStart(last_bar_time, divh, divm)
+sessionStart = f_sessionStart(bt, divh, divm)
+newSession = not na(sessionStart[1]) and sessionStart != sessionStart[1]
 
-//---- which range starts on this bar (only one can match a minute) ----
+// In current-session-only mode, discard earlier sessions' objects at each boundary.
+// State is retained so a window spanning the boundary can finish normally.
+if not i_showPrev and newSession
+    while array.size(g_boxes) > 0
+        box.delete(array.shift(g_boxes))
+    while array.size(g_lines) > 0
+        line.delete(array.shift(g_lines))
+    while array.size(g_labels) > 0
+        label.delete(array.shift(g_labels))
+
+//---- which range starts on this bar (crosses its NY-time boundary) ----
+rS = array.from(f_nyBoundary(bt, rh1, rm1), f_nyBoundary(bt, rh2, rm2), f_nyBoundary(bt, rh3, rm3))
+rIS = array.from(f_nyBoundary(bt, rih1, rim1), f_nyBoundary(bt, rih2, rim2), f_nyBoundary(bt, rih3, rim3))
 int foundM = -1
 for k = 0 to 2
-    sk = array.get(rS, k)
-    if not na(sk) and sk == bt
+    if f_crossed(time[1], time, array.get(rS, k)) and time < array.get(rS, k) + array.get(nMain, k) * 60000
         foundM := k
 int foundI = -1
 for k = 0 to 2
-    sk = array.get(rIS, k)
-    if not na(sk) and sk == bt
+    if f_crossed(time[1], time, array.get(rIS, k)) and time < array.get(rIS, k) + array.get(nIn, k) * 60000
         foundI := k
 
 //=== 1) MAIN COMPLETION (window ended on/after this bar) ==============
@@ -156,18 +397,20 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
     re = g_mRe
     hi = f_arrMax(g_mH)
     lo = f_arrMin(g_mL)
-    if not na(hi) and hi > lo and (i_showPrev or f_nyDateKey(rs) == todayKey)
+    if not na(hi) and hi > lo and (i_showPrev or rs >= curSessionStart)
         color col   = array.get(cMain, k)
         mins    = array.get(nMain, k)
         lineEnd = rs + 4 * mins * 60000
-        // box
-        box.new(rs, hi, re, lo, xloc = xloc.bar_time,
-             border_color = col, bgcolor = color.new(col, i_opac), border_width = 1)
-        // solid high/low + dotted mid lines
-        line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid)
-        line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = line.style_solid)
-        line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
-             color = c_mid1, style = line.style_dotted)
+        rgOn = k == 0 ? i_showR1 : k == 1 ? i_showR2 : i_showR3
+        if rgOn
+            // box
+            f_regBox(box.new(rs, hi, re, lo, xloc = xloc.bar_time,
+                 border_color = col, bgcolor = color.new(col, i_opac), border_width = i_bxW))
+            // solid high/low + dotted mid lines
+            f_regLine(line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = f_lstyle(i_hlS), width = i_hlW))
+            f_regLine(line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = f_lstyle(i_hlS), width = i_hlW))
+            f_regLine(line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
+                 color = c_mid1, style = f_lstyle(i_midS), width = i_midW))
         // ---- volume profile (overlap-weighted bins) ----
         levels = math.max(2, i_vplvls)
         step   = (hi - lo) / levels
@@ -176,16 +419,9 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
             h1 = array.get(g_mH, b)
             l1 = array.get(g_mL, b)
             v1 = array.get(g_mV, b)
-            sp = h1 - l1
-            for q = 0 to levels - 1
-                blo = lo + q * step
-                bhi = lo + (q + 1) * step
-                ol  = math.min(h1, bhi) - math.max(l1, blo)
-                if ol > 0
-                    w = sp > 0 ? ol / sp : 1.0
-                    array.set(vols, q, array.get(vols, q) + v1 * w)
+            f_addVolume(vols, lo, step, h1, l1, v1)
         vmax = f_arrMax(vols)
-        if not na(vmax) and vmax > 0
+        if i_showRPV and not na(vmax) and vmax > 0
             // POC + value area expansion
             total = 0.0
             for q = 0 to levels - 1
@@ -219,35 +455,35 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                 vq = array.get(vols, q)
                 if vq > 0
                     wq = int(math.max(1.0, math.round(60000.0 * i_vpw * vq / vmax)))
-                    t1 = rs - wq
+                    t1 = rs - int(i_vpgap * 60000) - wq
                     blo = lo + q * step
                     bhi = lo + (q + 1) * step
                     bclr = (q == poc or q == va_lo or q == va_hi)
                          ? color.new(i_pocc, 35)
                          : (q >= va_lo and q <= va_hi ? color.new(i_vac, 35) : color.new(col, i_opac))
-                    box.new(t1, bhi, rs, blo, xloc = xloc.bar_time,
-                         border_color = bclr, bgcolor = bclr, border_width = 1)
+                    f_regBox(box.new(t1, bhi, int(rs - int(i_vpgap * 60000)), blo, xloc = xloc.bar_time,
+                         border_color = bclr, bgcolor = bclr, border_width = 1))
                     if i_binTxt
                         tv = str.tostring(int(math.round(vq)))
-                        label.new(int(t1 - i_txtGap * 60000 - str.length(tv) * i_txtCw * 60000 / 2),
+                        f_regLabel(label.new(int(t1 - i_txtGap * 60000 - str.length(tv) * i_txtCw * 60000 / 2),
                              (blo + bhi) / 2 - step * 0.2, tv,
                              xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
-                             style = label.style_none, size = size.small)
+                             style = label.style_none, size = size.small))
                     // POC / VAH / VAL word labels centered inside their own bin
                     if q == poc
-                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "POC",
+                        f_regLabel(label.new(int(rs - int(i_vpgap * 60000) - wq / 2), (blo + bhi) / 2 - step * 0.4, "POC",
                              xloc = xloc.bar_time, color = na, textcolor = i_pocc,
-                             style = label.style_none, size = size.small)
+                             style = label.style_none, size = size.small))
                     if q == va_hi
-                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "VAH",
+                        f_regLabel(label.new(int(rs - int(i_vpgap * 60000) - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAH",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
-                             style = label.style_none, size = size.small)
+                             style = label.style_none, size = size.small))
                     if q == va_lo
-                        label.new(rs - wq / 2, (blo + bhi) / 2 - step * 0.4, "VAL",
+                        f_regLabel(label.new(int(rs - int(i_vpgap * 60000) - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAL",
                              xloc = xloc.bar_time, color = na, textcolor = i_vac,
-                             style = label.style_none, size = size.small)
-        // ---- buy / sell / delta spread across range top ----
-        if i_bsVol
+                             style = label.style_none, size = size.small))
+// ---- delta spread across the range top ----
+        if i_delta and array.sum(g_mV) > 0
             buys = 0.0
             sells = 0.0
             for b = 0 to array.size(g_mO) - 1
@@ -262,19 +498,12 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                     buys += v / 2
                     sells += v / 2
             diff = buys - sells
-            bw = (re - rs) / 3
             ybs = hi + (hi - lo) * 0.03
             rwb = (re - rs) / nz(time - time[1], 60000)
-            s1 = str.tostring(int(math.round(buys)))
-            s2 = str.tostring(int(math.round(sells)))
-            s3 = "Delta " + str.tostring(int(math.round(math.abs(diff))))
-            label.new(rs, ybs, s1, xloc = xloc.bar_time, color = na,
-                 textcolor = color.new(color.lime, 0), style = label.style_none, size = f_barSize(rwb))
-            label.new(int(rs + bw), ybs, s2, xloc = xloc.bar_time, color = na,
-                 textcolor = color.new(color.red, 0), style = label.style_none, size = f_barSize(rwb))
-            label.new(int(rs + 2 * bw), ybs, s3, xloc = xloc.bar_time, color = na,
+            s3 = "Δ " + str.tostring(int(math.round(math.abs(diff))))
+            f_regLabel(label.new(int(rs + (re - rs) / 2), ybs, s3, xloc = xloc.bar_time, color = na,
                  textcolor = diff >= 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
-                 style = label.style_none, size = f_barSize(rwb))
+                 style = label.style_none, size = f_barSize(rwb)))
     // reset state
     g_mainRs  := na
     g_mRe     := na
@@ -292,14 +521,16 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
     giM = not na(g_inMainRs) and g_inMainRs <= rsI and reI <= g_inMainRe
     hiI = f_arrMax(g_iH)
     loI = f_arrMin(g_iL)
-    if not na(hiI) and hiI > loI and giM and (i_showPrev or f_nyDateKey(rsI) == todayKey)
+    if not na(hiI) and hiI > loI and giM and (i_showPrev or rsI >= curSessionStart)
         leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
-        box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
-             border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1)
-        line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted)
-        line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
-             color = c_mid2, style = line.style_dotted)
-        line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = line.style_dotted)
+        rgOnI = g_inIdx == 0 ? i_showR1 : g_inIdx == 1 ? i_showR2 : i_showR3
+        if i_showInside and rgOnI
+            f_regBox(box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
+                 border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = i_bxW))
+            f_regLine(line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = f_lstyle(i_hlS), width = i_hlW))
+            f_regLine(line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
+                 color = c_mid2, style = f_lstyle(i_midS), width = i_midW))
+            f_regLine(line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = f_lstyle(i_hlS), width = i_hlW))
     g_inRs      := na
     g_inRe      := na
     g_inIdx     := -1
@@ -308,14 +539,112 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
     array.clear(g_iL)
     array.clear(g_iV)
 
+//=== 2b) DAILY DIVIDER (full-window vertical line at the NY divider time) =
+// The defined segment sits between this bar's high/low, i.e. inside the data
+// range, so it never distends the autoscaled price range; extend.both then
+// stretches the vertical line to the top and bottom edges of the pane.
+if i_divOn and newSession and (i_showPrev or sessionStart == curSessionStart)
+    divLn = line.new(sessionStart, low, sessionStart, math.max(high, low + syminfo.mintick), xloc.bar_time, color = c_div, style = line.style_dashed)
+    line.set_extend(divLn, extend.both)
+    f_regLine(divLn)
+
+//=== 2b2) UPCOMING DIVIDER (next NY session boundary, drawn in advance) =
+// Draw a dashed line at the NEXT NY divider time so the current day's
+// upcoming boundary is visible even before it it reached. Re-pinned each bar.
+var line g_fDiv = na
+if i_divOn
+    nextSession = f_sessionNext(last_bar_time, divh, divm)
+    if na(g_fDiv)
+        g_fDiv := line.new(nextSession, low, nextSession, math.max(high, low + syminfo.mintick), xloc = xloc.bar_time, color = c_div, style = line.style_dashed)
+        line.set_extend(g_fDiv, extend.both)
+    else
+        line.set_x1(g_fDiv, nextSession)
+        line.set_x2(g_fDiv, nextSession)
+else
+    if not na(g_fDiv)
+        line.delete(g_fDiv)
+        g_fDiv := na
+
+//=== 2c) PREV SESSION (18:00->18:00) VOLUME PROFILE LEVELS ============
+// For each session S (a crossed 18:00 divider), take ONLY the previous
+// daily range [S-24 elapsed hours, S) - the prior divider to this divider -
+// and draw its POC/VAH/VAL across the current period [S, S+24h).
+// Historical sessions draw once per session (i_showPrev). The CURRENT period
+// gets a dedicated set of persistent objects refreshed whenever the latest
+// divider moves, so levels never depend on replay timing or FIFO eviction.
+var int g_l4S = na
+l4New = na(g_l4S) or sessionStart != g_l4S
+if i_sessLvl and not na(sessionStart) and l4New and i_showPrev
+    g_l4S := sessionStart
+    [sv, sah, sp] = f_sessionPrices(sessionStart)
+    f_drawLevelLines(sessionStart, sv, sah, sp)
+
+var int   g_lCur = na
+var line  cValL = na
+var line  cVahL = na
+var line  cPocL = na
+var label cValS = na
+var label cValE = na
+var label cVahS = na
+var label cVahE = na
+var label cPocS = na
+var label cPocE = na
+if i_sessLvl and not na(curSessionStart) and barstate.islast and curSessionStart != g_lCur
+    g_lCur := curSessionStart
+    if not na(cValL)
+        line.delete(cValL)
+        cValL := na
+    if not na(cVahL)
+        line.delete(cVahL)
+        cVahL := na
+    if not na(cPocL)
+        line.delete(cPocL)
+        cPocL := na
+    if not na(cValS)
+        label.delete(cValS)
+        cValS := na
+    if not na(cValE)
+        label.delete(cValE)
+        cValE := na
+    if not na(cVahS)
+        label.delete(cVahS)
+        cVahS := na
+    if not na(cVahE)
+        label.delete(cVahE)
+        cVahE := na
+    if not na(cPocS)
+        label.delete(cPocS)
+        cPocS := na
+    if not na(cPocE)
+        label.delete(cPocE)
+        cPocE := na
+    [cv, cvah, cpoc] = f_sessionPrices(curSessionStart)
+    if not na(cv) and not na(cvah) and not na(cpoc)
+        cE = curSessionStart + 86400000
+        cValL := line.new(curSessionStart, cv, cE, cv, xloc.bar_time, color = i_pval, style = f_lstyle(i_szS), width = i_szW)
+        cValS := label.new(curSessionStart, cv, "VAL", xloc = xloc.bar_time, color = na,
+             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl))
+        cValE := label.new(cE, cv, "VAL", xloc = xloc.bar_time, color = na,
+             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl))
+        cVahL := line.new(curSessionStart, cvah, cE, cvah, xloc.bar_time, color = i_pvah, style = f_lstyle(i_szS), width = i_szW)
+        cVahS := label.new(curSessionStart, cvah, "VAH", xloc = xloc.bar_time, color = na,
+             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl))
+        cVahE := label.new(cE, cvah, "VAH", xloc = xloc.bar_time, color = na,
+             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl))
+        cPocL := line.new(curSessionStart, cpoc, cE, cpoc, xloc.bar_time, color = i_ppoc, style = f_lstyle(i_szS), width = i_szW)
+        cPocS := label.new(curSessionStart, cpoc, "POC", xloc = xloc.bar_time, color = na,
+             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl))
+        cPocE := label.new(cE, cpoc, "POC", xloc = xloc.bar_time, color = na,
+             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl))
+
 //=== 3) STARTS =========================================================
 int actM = -1
 if not na(g_mRe)
     actM := g_mainIdx
 else if foundM >= 0
-    array.set(g_lastRs, foundM, bt)
-    g_mainRs  := bt
-    g_mRe     := bt + array.get(nMain, foundM) * 60000
+    array.set(g_lastRs, foundM, array.get(rS, foundM))
+    g_mainRs  := array.get(rS, foundM)
+    g_mRe     := g_mainRs + array.get(nMain, foundM) * 60000
     g_mainIdx := foundM
     array.clear(g_mH)
     array.clear(g_mL)
@@ -328,8 +657,8 @@ int actI = -1
 if not na(g_inRe)
     actI := g_inIdx
 else if foundI >= 0
-    g_inRs    := bt
-    g_inRe    := bt + array.get(nIn, foundI) * 60000
+    g_inRs    := array.get(rIS, foundI)
+    g_inRe    := g_inRs + array.get(nIn, foundI) * 60000
     g_inIdx   := foundI
     g_inMainRs:= array.get(g_lastRs, foundI)
     g_inMainRe:= na(g_inMainRs) ? na : g_inMainRs + array.get(nMain, foundI) * 60000
@@ -345,8 +674,322 @@ if actM >= 0
     array.push(g_mL, low)
     array.push(g_mO, open)
     array.push(g_mC, close)
-    array.push(g_mV, volume)
+    array.push(g_mV, nz(volume, 0.0))
 if actI >= 0
     array.push(g_iH, high)
     array.push(g_iL, low)
-    array.push(g_iV, volume)
+    array.push(g_iV, nz(volume, 0.0))
+
+//=== 5) HTF CANDLE OVERLAY (shifted into the future) ===================
+// Aggregates chart bars into i_ptf-minute buckets. The forming candle
+// and the last X closed ones are drawn as wick + body at real prices,
+// placed by bar count so spacing can never collapse: the block starts
+// two candle-widths closer than 1 + X (never before the last bar),
+// oldest left, forming right. Redrawn every bar (old objects deleted
+// first, no trails).
+bktMin = int(i_ptf)
+bktSec = bktMin * 60000
+// Bucket grid anchored at a user-selected NY open time (i_htfAnchor). The
+// pattern repeats daily: boundaries at anchor, anchor+1*len, ... (mod 1440).
+[ahA, amA] = f_parse(i_htfAnchor)
+aMin = ahA * 60 + amA
+nyMo = timestamp("America/New_York", year(bt, "America/New_York"), month(bt, "America/New_York"), dayofmonth(bt, "America/New_York"), 0, 0)
+nMM = hour(bt, "America/New_York") * 60 + minute(bt, "America/New_York")
+bStartMin = int((((nMM - aMin) + 1440) % 1440) / bktMin) * bktMin + aMin
+if bStartMin > nMM
+    bStartMin -= 1440
+bkt = nyMo + bStartMin * 60000
+var int   pBktId   = na
+var float pBktO    = na
+var float pBktH    = na
+var float pBktL    = na
+var float pBktC    = na
+var float pBktB    = na
+var float pBktS    = na
+var float pBktDx   = na
+var float pBktDn   = na
+var array<float> pC  = array.new_float()
+var array<int>   pCB = array.new_int()
+var array<float> pV  = array.new_float()
+var array<box>   pBoxes = array.new_box()
+var array<line>  pWicks = array.new_line()
+var array<label> pDlt = array.new_label()
+
+// persistent forming-candle objects (updated in-place every tick)
+var box   fBox    = na
+var line  fWickUp = na
+var line  fWickDn = na
+var label fDltLbl = na
+var label fCntLbl = na
+
+// estimated buy/sell from candle direction (same convention as range delta)
+bvBar = nz(volume, 0.0)
+bBuy = close > open ? bvBar : close < open ? 0.0 : bvBar / 2
+bSell = bvBar - bBuy
+bDelta = close > open ? bvBar : close < open ? -bvBar : 0.0
+if na(pBktId)
+    pBktId := bkt
+    pBktO  := open
+    pBktH  := high
+    pBktL  := low
+    pBktC  := close
+    pBktB  := bBuy
+    pBktS  := bSell
+    pBktDx := bDelta
+    pBktDn := bDelta
+else if bkt != pBktId
+    array.push(pC, pBktO)
+    array.push(pC, pBktH)
+    array.push(pC, pBktL)
+    array.push(pC, pBktC)
+    array.push(pCB, pBktId)
+    array.push(pV, pBktB)
+    array.push(pV, pBktS)
+    array.push(pV, pBktDx)
+    array.push(pV, pBktDn)
+    while array.size(pCB) > i_pprev + 1
+        array.remove(pCB, 0)
+        array.remove(pC, 0)
+        array.remove(pC, 0)
+        array.remove(pC, 0)
+        array.remove(pC, 0)
+        array.remove(pV, 0)
+        array.remove(pV, 0)
+        array.remove(pV, 0)
+        array.remove(pV, 0)
+    // create objects for the just-closed candle (newest closed = index 0)
+    if i_panel
+        nC2 = array.size(pCB)
+        if nC2 > 0
+            sw = 6
+            ld = 10
+            gw = 3
+            st = sw + gw
+            tMs = timeframe.in_seconds() * 1000
+            o2  = array.get(pC, (nC2 - 1) * 4)
+            h2  = array.get(pC, (nC2 - 1) * 4 + 1)
+            l2  = array.get(pC, (nC2 - 1) * 4 + 2)
+            c2  = array.get(pC, (nC2 - 1) * 4 + 3)
+            bb2 = array.get(pV, (nC2 - 1) * 4)
+            bs2 = array.get(pV, (nC2 - 1) * 4 + 1)
+            dx2 = array.get(pV, (nC2 - 1) * 4 + 2)
+            dn2 = array.get(pV, (nC2 - 1) * 4 + 3)
+            lx2 = time + (ld + (i_pprev - 1) * st) * tMs
+            rx2 = lx2 + sw * tMs
+            wx2 = lx2 + int(sw / 2) * tMs
+            up2 = c2 >= o2
+            bclr2 = up2 ? i_pup : i_pdn
+            wclr2 = up2 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+            bTop2 = math.max(o2, c2)
+            bBot2 = math.min(o2, c2)
+            array.push(pBoxes, box.new(lx2, bTop2, rx2, bBot2, xloc = xloc.bar_time, border_color = bclr2, bgcolor = color.new(bclr2, i_pfill), border_width = 1))
+            if h2 > bTop2
+                array.push(pWicks, line.new(wx2, h2, wx2, bTop2, xloc = xloc.bar_time, color = wclr2, width = 1))
+            else
+                array.push(pWicks, line.new(wx2, h2, wx2, bTop2, xloc = xloc.bar_time, color = wclr2, width = 1))
+            if bBot2 > l2
+                array.push(pWicks, line.new(wx2, bBot2, wx2, l2, xloc = xloc.bar_time, color = wclr2, width = 1))
+            else
+                array.push(pWicks, line.new(wx2, bBot2, wx2, l2, xloc = xloc.bar_time, color = wclr2, width = 1))
+            dd2 = bb2 - bs2
+            dclr2 = dd2 >= 0 ? color.lime : color.red
+            ds2 = dd2 >= 0 ? "+" : ""
+            xs2 = dx2 >= 0 ? "+" : ""
+            dtxt2 = "B " + f_cvol(bb2) + "  S " + f_cvol(bs2) + "\n   Δ " + ds2 + f_cvol(dd2) + "\n   H " + xs2 + f_cvol(dx2) + "  L " + f_cvol(dn2)
+            dy2 = dd2 >= 0 ? h2 + syminfo.mintick * 10 : l2 - syminfo.mintick * 10
+            ds3 = dd2 >= 0 ? label.style_label_down : label.style_label_up
+            array.push(pDlt, label.new(wx2, dy2, dtxt2, xloc = xloc.bar_time, color = color.new(color.black, 25), textcolor = dclr2, style = ds3, size = size.small))
+    pBktId := bkt
+    pBktO  := open
+    pBktH  := high
+    pBktL  := low
+    pBktC  := close
+    pBktB  := bBuy
+    pBktS  := bSell
+    pBktDx := bDelta
+    pBktDn := bDelta
+else
+    pBktH := math.max(pBktH, high)
+    pBktL := math.min(pBktL, low)
+    pBktC := close
+    pBktB := pBktB + bBuy
+    pBktS := pBktS + bSell
+    pBktDx := math.max(pBktDx, bDelta)
+    pBktDn := math.min(pBktDn, bDelta)
+
+if i_panel
+    nC = array.size(pCB)
+    slotW = 6
+    lead = 10
+    gapW = 3
+    stepW = slotW + gapW
+    tMs = timeframe.in_seconds() * 1000
+
+    // --- forming candle (j=0): always update in-place ---
+    lx0 = time + (lead + i_pprev * stepW) * tMs
+    rx0 = lx0 + slotW * tMs
+    wx0 = lx0 + int(slotW / 2) * tMs
+    up0 = pBktC >= pBktO
+    bclr0 = up0 ? i_pup : i_pdn
+    wclr0 = up0 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+    bTop0 = math.max(pBktO, pBktC)
+    bBot0 = math.min(pBktO, pBktC)
+
+    if na(fWickUp)
+        fWickUp := line.new(wx0, pBktH, wx0, bTop0, xloc = xloc.bar_time, color = wclr0, width = 1)
+    else
+        line.set_xy1(fWickUp, wx0, pBktH)
+        line.set_xy2(fWickUp, wx0, bTop0)
+        line.set_color(fWickUp, wclr0)
+    if na(fWickDn)
+        fWickDn := line.new(wx0, bBot0, wx0, pBktL, xloc = xloc.bar_time, color = wclr0, width = 1)
+    else
+        line.set_xy1(fWickDn, wx0, bBot0)
+        line.set_xy2(fWickDn, wx0, pBktL)
+        line.set_color(fWickDn, wclr0)
+    if na(fBox)
+        fBox := box.new(lx0, bTop0, rx0, bBot0, xloc = xloc.bar_time, border_color = bclr0, bgcolor = color.new(bclr0, i_pfill), border_width = 1)
+    else
+        box.set_left(fBox, lx0)
+        box.set_top(fBox, bTop0)
+        box.set_right(fBox, rx0)
+        box.set_bottom(fBox, bBot0)
+        box.set_border_color(fBox, bclr0)
+        box.set_bgcolor(fBox, color.new(bclr0, i_pfill))
+
+    // forming delta label
+    dd0 = pBktB - pBktS
+    dclr0 = dd0 >= 0 ? color.lime : color.red
+    dsign0 = dd0 >= 0 ? "+" : ""
+    xsign0 = pBktDx >= 0 ? "+" : ""
+    dtxt0 = "B " + f_cvol(pBktB) + "  S " + f_cvol(pBktS) + "\n   Δ " + dsign0 + f_cvol(dd0) + "\n   H " + xsign0 + f_cvol(pBktDx) + "  L " + f_cvol(pBktDn)
+    dy0 = dd0 >= 0 ? pBktH + syminfo.mintick * 10 : pBktL - syminfo.mintick * 10
+    ds0 = dd0 >= 0 ? label.style_label_down : label.style_label_up
+    if na(fDltLbl)
+        fDltLbl := label.new(wx0, dy0, dtxt0, xloc = xloc.bar_time, color = color.new(color.black, 25), textcolor = dclr0, style = ds0, size = size.small)
+    else
+        label.set_x(fDltLbl, wx0)
+        label.set_y(fDltLbl, dy0)
+        label.set_text(fDltLbl, dtxt0)
+        label.set_textcolor(fDltLbl, dclr0)
+        label.set_style(fDltLbl, ds0)
+
+    // forming countdown label
+    nyMin = hour(timenow, "America/New_York") * 60 + minute(timenow, "America/New_York")
+    nySec = hour(timenow, "America/New_York") * 3600 + minute(timenow, "America/New_York") * 60 + second(timenow, "America/New_York")
+    r1S = rh1 * 60 + rm1
+    r2S = rh2 * 60 + rm2
+    r3S = rh3 * 60 + rm3
+    ns1 = r1S > nyMin ? r1S : r1S + 1440
+    ns2 = r2S > nyMin ? r2S : r2S + 1440
+    ns3 = r3S > nyMin ? r3S : r3S + 1440
+    nextS = math.min(ns1, math.min(ns2, ns3))
+    nextN = nextS == ns1 ? "R1" : nextS == ns2 ? "R2" : "R3"
+    curN = ""
+    curE = 0
+    if nyMin >= r1S and nyMin < r1S + i_r1m
+        curN := "R1"
+        curE := r1S + i_r1m
+    else if nyMin >= r2S and nyMin < r2S + i_r2m
+        curN := "R2"
+        curE := r2S + i_r2m
+    else if nyMin >= r3S and nyMin < r3S + i_r3m
+        curN := "R3"
+        curE := r3S + i_r3m
+    remHtf  = (pBktId + bktSec - timenow) / 1000
+    remNext = nextS * 60 - nySec
+    remClose = curE * 60 - nySec
+    txt = str.tostring(i_ptf) + "m close: " + f_cnt(remHtf)
+    txt += "\n" + nextN + " start: " + f_cnt(remNext)
+    if curN != ""
+        txt += "\n" + curN + " close: " + f_cnt(remClose)
+    fx = time + (lead + i_pprev * stepW + slotW + 2) * tMs
+    if na(fCntLbl)
+        fCntLbl := label.new(fx, close, txt, xloc = xloc.bar_time, color = color.new(color.black, 0), textcolor = color.white, style = label.style_label_left, size = size.small)
+    else
+        label.set_x(fCntLbl, fx)
+        label.set_y(fCntLbl, close)
+        label.set_text(fCntLbl, txt)
+
+    // --- closed candles: create once on rollover, update positions only ---
+    while array.size(pBoxes) > i_pprev
+        box.delete(array.shift(pBoxes))
+        line.delete(array.shift(pWicks))
+        line.delete(array.shift(pWicks))
+        label.delete(array.shift(pDlt))
+    for j = 1 to i_pprev
+        idx = nC - j
+        if idx >= 0
+            base = idx * 4
+            o  = array.get(pC, base)
+            h  = array.get(pC, base + 1)
+            l  = array.get(pC, base + 2)
+            c  = array.get(pC, base + 3)
+            bb = array.get(pV, base)
+            bs = array.get(pV, base + 1)
+            dx = array.get(pV, base + 2)
+            dn = array.get(pV, base + 3)
+            lx = time + (lead + (i_pprev - j) * stepW) * tMs
+            rx = lx + slotW * tMs
+            wx = lx + int(slotW / 2) * tMs
+            up = c >= o
+            bclr = up ? i_pup : i_pdn
+            wclr = up ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+            bTop = math.max(o, c)
+            bBot = math.min(o, c)
+            ci = array.size(pBoxes) - j
+            if ci >= 0
+                // update existing
+                box.set_left(array.get(pBoxes, ci), lx)
+                box.set_top(array.get(pBoxes, ci), bTop)
+                box.set_right(array.get(pBoxes, ci), rx)
+                box.set_bottom(array.get(pBoxes, ci), bBot)
+                box.set_border_color(array.get(pBoxes, ci), bclr)
+                box.set_bgcolor(array.get(pBoxes, ci), color.new(bclr, i_pfill))
+                // wicks: update 2 lines per candle
+                wu = ci * 2
+                wd = ci * 2 + 1
+                if wu < array.size(pWicks) and wd < array.size(pWicks)
+                    line.set_xy1(array.get(pWicks, wu), wx, h)
+                    line.set_xy2(array.get(pWicks, wu), wx, bTop)
+                    line.set_color(array.get(pWicks, wu), wclr)
+                    line.set_xy1(array.get(pWicks, wd), wx, bBot)
+                    line.set_xy2(array.get(pWicks, wd), wx, l)
+                    line.set_color(array.get(pWicks, wd), wclr)
+                // delta label
+                if ci < array.size(pDlt)
+                    ddc = bb - bs
+                    dclrc = ddc >= 0 ? color.lime : color.red
+                    dsc = ddc >= 0 ? "+" : ""
+                    xsc = dx >= 0 ? "+" : ""
+                    dtxtc = "B " + f_cvol(bb) + "  S " + f_cvol(bs) + "\n   Δ " + dsc + f_cvol(ddc) + "\n   H " + xsc + f_cvol(dx) + "  L " + f_cvol(dn)
+                    dyc = ddc >= 0 ? h + syminfo.mintick * 10 : l - syminfo.mintick * 10
+                    dsc2 = ddc >= 0 ? label.style_label_down : label.style_label_up
+                    label.set_x(array.get(pDlt, ci), wx)
+                    label.set_y(array.get(pDlt, ci), dyc)
+                    label.set_text(array.get(pDlt, ci), dtxtc)
+                    label.set_textcolor(array.get(pDlt, ci), dclrc)
+                    label.set_style(array.get(pDlt, ci), dsc2)
+
+else
+    if not na(fBox)
+        box.delete(fBox)
+        fBox := na
+    if not na(fWickUp)
+        line.delete(fWickUp)
+        fWickUp := na
+    if not na(fWickDn)
+        line.delete(fWickDn)
+        fWickDn := na
+    if not na(fDltLbl)
+        label.delete(fDltLbl)
+        fDltLbl := na
+    if not na(fCntLbl)
+        label.delete(fCntLbl)
+        fCntLbl := na
+    while array.size(pBoxes) > 0
+        box.delete(array.shift(pBoxes))
+    while array.size(pWicks) > 0
+        line.delete(array.shift(pWicks))
+    while array.size(pDlt) > 0
+        label.delete(array.shift(pDlt))
