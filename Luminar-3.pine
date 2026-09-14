@@ -75,6 +75,9 @@ c_div    = input.color(color.gray, "Divider", group = "Style - Session")
 i_pval   = input.color(color.aqua, "VAL", group = "Style - Session", inline = "sessionColors")
 i_pvah   = input.color(color.fuchsia, "VAH", group = "Style - Session", inline = "sessionColors")
 i_ppoc   = input.color(#FF4500, "POC", group = "Style - Session", inline = "sessionColors")
+i_szLvl  = input.string("normal", "VAH/VAL/POC label size", options = ["tiny", "small", "normal", "large", "huge"], group = "Style - Session")
+i_szW    = input.int(1,        "VAH/VAL/POC line thickness (px)", minval = 1, maxval = 10, group = "Style - Session")
+i_szS    = input.string("dotted", "VAH/VAL/POC line style", options = ["solid", "dotted", "dashed"], group = "Style - Session")
 
 //----- Style - HTF candles -----
 i_pup    = input.color(color.lime, "Up candles", group = "Style - HTF candles")
@@ -85,6 +88,9 @@ i_pfill  = input.int(30,        "Body fill transparency (%)", minval = 0, maxval
 // Standard helpers
 f_lstyle(s) =>
     s == "dotted" ? line.style_dotted : s == "dashed" ? line.style_dashed : line.style_solid
+
+f_lsize(s) =>
+    s == "tiny" ? size.tiny : s == "small" ? size.small : s == "normal" ? size.normal : s == "large" ? size.large : size.huge
 
 f_parse(s) =>
     p = str.split(s, ":")
@@ -290,21 +296,21 @@ f_sessionPrices(S, maxDays = 4) =>
 f_drawLevelLines(S, vv, ah, pp) =>
     if not na(vv) and not na(ah) and not na(pp)
         endT = S + 86400000
-        f_regLine(line.new(S, vv, endT, vv, xloc.bar_time, color = i_pval, style = line.style_dotted))
+        f_regLine(line.new(S, vv, endT, vv, xloc.bar_time, color = i_pval, style = f_lstyle(i_szS), width = i_szW))
         f_regLabel(label.new(S, vv, "VAL", xloc = xloc.bar_time, color = na,
-             textcolor = i_pval, style = label.style_none, size = size.tiny))
+             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl)))
         f_regLabel(label.new(endT, vv, "VAL", xloc = xloc.bar_time, color = na,
-             textcolor = i_pval, style = label.style_none, size = size.tiny))
-        f_regLine(line.new(S, ah, endT, ah, xloc.bar_time, color = i_pvah, style = line.style_dotted))
+             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl)))
+        f_regLine(line.new(S, ah, endT, ah, xloc.bar_time, color = i_pvah, style = f_lstyle(i_szS), width = i_szW))
         f_regLabel(label.new(S, ah, "VAH", xloc = xloc.bar_time, color = na,
-             textcolor = i_pvah, style = label.style_none, size = size.tiny))
+             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl)))
         f_regLabel(label.new(endT, ah, "VAH", xloc = xloc.bar_time, color = na,
-             textcolor = i_pvah, style = label.style_none, size = size.tiny))
-        f_regLine(line.new(S, pp, endT, pp, xloc.bar_time, color = i_ppoc, style = line.style_dotted))
+             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl)))
+        f_regLine(line.new(S, pp, endT, pp, xloc.bar_time, color = i_ppoc, style = f_lstyle(i_szS), width = i_szW))
         f_regLabel(label.new(S, pp, "POC", xloc = xloc.bar_time, color = na,
-             textcolor = i_ppoc, style = label.style_none, size = size.tiny))
+             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl)))
         f_regLabel(label.new(endT, pp, "POC", xloc = xloc.bar_time, color = na,
-             textcolor = i_ppoc, style = label.style_none, size = size.tiny))
+             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl)))
 
 //------------ range configuration (parsed once) ------------
 [rh1, rm1]   = f_parse(i_r1s)
@@ -615,21 +621,21 @@ if i_sessLvl and not na(curSessionStart) and barstate.islast and curSessionStart
     [cv, cvah, cpoc] = f_sessionPrices(curSessionStart)
     if not na(cv) and not na(cvah) and not na(cpoc)
         cE = curSessionStart + 86400000
-        cValL := line.new(curSessionStart, cv, cE, cv, xloc.bar_time, color = i_pval, style = line.style_dotted)
+        cValL := line.new(curSessionStart, cv, cE, cv, xloc.bar_time, color = i_pval, style = f_lstyle(i_szS), width = i_szW)
         cValS := label.new(curSessionStart, cv, "VAL", xloc = xloc.bar_time, color = na,
-             textcolor = i_pval, style = label.style_none, size = size.tiny)
+             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl))
         cValE := label.new(cE, cv, "VAL", xloc = xloc.bar_time, color = na,
-             textcolor = i_pval, style = label.style_none, size = size.tiny)
-        cVahL := line.new(curSessionStart, cvah, cE, cvah, xloc.bar_time, color = i_pvah, style = line.style_dotted)
+             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl))
+        cVahL := line.new(curSessionStart, cvah, cE, cvah, xloc.bar_time, color = i_pvah, style = f_lstyle(i_szS), width = i_szW)
         cVahS := label.new(curSessionStart, cvah, "VAH", xloc = xloc.bar_time, color = na,
-             textcolor = i_pvah, style = label.style_none, size = size.tiny)
+             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl))
         cVahE := label.new(cE, cvah, "VAH", xloc = xloc.bar_time, color = na,
-             textcolor = i_pvah, style = label.style_none, size = size.tiny)
-        cPocL := line.new(curSessionStart, cpoc, cE, cpoc, xloc.bar_time, color = i_ppoc, style = line.style_dotted)
+             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl))
+        cPocL := line.new(curSessionStart, cpoc, cE, cpoc, xloc.bar_time, color = i_ppoc, style = f_lstyle(i_szS), width = i_szW)
         cPocS := label.new(curSessionStart, cpoc, "POC", xloc = xloc.bar_time, color = na,
-             textcolor = i_ppoc, style = label.style_none, size = size.tiny)
+             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl))
         cPocE := label.new(cE, cpoc, "POC", xloc = xloc.bar_time, color = na,
-             textcolor = i_ppoc, style = label.style_none, size = size.tiny)
+             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl))
 
 //=== 3) STARTS =========================================================
 int actM = -1
