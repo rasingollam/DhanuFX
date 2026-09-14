@@ -59,6 +59,11 @@ c_inside = input.color(COL_INS, "Inside box", group = "Style - Ranges")
 i_opac   = input.int(55,        "Box transparency (%)", minval = 0, maxval = 100, group = "Style - Ranges")
 c_mid1   = input.color(color.white, "Range midpoint", group = "Style - Ranges")
 c_mid2   = input.color(color.orange, "Inside midpoint", group = "Style - Ranges")
+i_bxW    = input.int(1,        "Range box border (px)", minval = 0, maxval = 10, group = "Style - Ranges")
+i_hlW    = input.int(1,        "High/low line thickness (px)", minval = 1, maxval = 10, group = "Style - Ranges")
+i_hlS    = input.string("solid", "High/low line style", options = ["solid", "dotted", "dashed"], group = "Style - Ranges")
+i_midW   = input.int(1,        "Midline thickness (px)", minval = 1, maxval = 10, group = "Style - Ranges")
+i_midS   = input.string("dotted", "Midline style", options = ["solid", "dotted", "dashed"], group = "Style - Ranges")
 i_txtGap  = input.int(8,        "Bin text left offset (minutes)", minval = 0, maxval = 120, group = "Style - Volume profile")
 i_txtCw   = input.float(1.4,    "Text spacing (minutes/digit)", minval = 0.1, maxval = 10, step = 0.1, group = "Style - Volume profile")
 i_vpw     = input.int(60,       "Histogram width (minutes)", minval = 5, maxval = 240, group = "Style - Volume profile")
@@ -76,6 +81,10 @@ i_pdn    = input.color(color.red, "Down candles", group = "Style - HTF candles")
 i_pfill  = input.int(30,        "Body fill transparency (%)", minval = 0, maxval = 90, group = "Style - HTF candles")
 
 //------------ helpers ------------
+// Standard helpers
+f_lstyle(s) =>
+    s == "dotted" ? line.style_dotted : s == "dashed" ? line.style_dashed : line.style_solid
+
 f_parse(s) =>
     p = str.split(s, ":")
     ok = array.size(p) == 2 and str.length(s) == 5
@@ -389,12 +398,12 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
         if rgOn
             // box
             f_regBox(box.new(rs, hi, re, lo, xloc = xloc.bar_time,
-                 border_color = col, bgcolor = color.new(col, i_opac), border_width = 1))
+                 border_color = col, bgcolor = color.new(col, i_opac), border_width = i_bxW))
             // solid high/low + dotted mid lines
-            f_regLine(line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = line.style_solid))
-            f_regLine(line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = line.style_solid))
+            f_regLine(line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = f_lstyle(i_hlS), width = i_hlW))
+            f_regLine(line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = f_lstyle(i_hlS), width = i_hlW))
             f_regLine(line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
-                 color = c_mid1, style = line.style_dotted))
+                 color = c_mid1, style = f_lstyle(i_midS), width = i_midW))
         // ---- volume profile (overlap-weighted bins) ----
         levels = math.max(2, i_vplvls)
         step   = (hi - lo) / levels
@@ -510,11 +519,11 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
         rgOnI = g_inIdx == 0 ? i_showR1 : g_inIdx == 1 ? i_showR2 : i_showR3
         if i_showInside and rgOnI
             f_regBox(box.new(rsI, hiI, reI, loI, xloc = xloc.bar_time,
-                 border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = 1))
-            f_regLine(line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = line.style_dotted))
+                 border_color = c_inside, bgcolor = color.new(c_inside, i_opac), border_width = i_bxW))
+            f_regLine(line.new(reI, hiI, leI, hiI, xloc.bar_time, color = c_inside, style = f_lstyle(i_hlS), width = i_hlW))
             f_regLine(line.new(reI, (hiI + loI) / 2, leI, (hiI + loI) / 2, xloc.bar_time,
-                 color = c_mid2, style = line.style_dotted))
-            f_regLine(line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = line.style_dotted))
+                 color = c_mid2, style = f_lstyle(i_midS), width = i_midW))
+            f_regLine(line.new(reI, loI, leI, loI, xloc.bar_time, color = c_inside, style = f_lstyle(i_hlS), width = i_hlW))
     g_inRs      := na
     g_inRe      := na
     g_inIdx     := -1
