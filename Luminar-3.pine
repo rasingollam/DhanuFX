@@ -641,9 +641,9 @@ if i_panel
     while array.size(pDlt) > 0
         label.delete(array.shift(pDlt))
     nC = array.size(pCB)
-    slotW = math.max(1, math.round(bktSec / (timeframe.multiplier * 60000)))
-    lead = math.max(0, (i_pprev - 1) * slotW)
-    gapW = math.max(1, int(slotW / 4))
+    slotW = 6
+    lead = 10
+    gapW = 3
     stepW = slotW + gapW
     for j = 0 to i_pprev
         float o  = na
