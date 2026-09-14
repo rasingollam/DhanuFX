@@ -162,6 +162,13 @@ f_cvol(v) =>
     r = a >= 1000000 ? sg + str.tostring(a / 1000000, "#.#") + "M" : a >= 1000 ? sg + str.tostring(a / 1000, "#.#") + "K" : sg + str.tostring(int(math.round(a)))
     r
 
+// format seconds as HH:MM:SS
+f_cnt(sec) =>
+    hh = int(math.max(0, sec) / 3600)
+    mm = int(math.max(0, sec) % 3600 / 60)
+    ss = int(math.max(0, sec)) % 60
+    (hh < 10 ? "0" : "") + str.tostring(hh) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm) + ":" + (ss < 10 ? "0" : "") + str.tostring(ss)
+
 //------------ FIFO garbage collection (deterministic, stays under the 500 hard cap) ------------
 // Register each object so explicit deletion and budgets stay synchronized.
 // Retention depends on bin count and label settings; it is not a fixed day count.
@@ -693,12 +700,36 @@ if i_panel
             array.push(pDlt, label.new(wx, dy, dtxt, xloc = xloc.bar_index,
                  color = color.new(color.black, 25), textcolor = dclr,
                  style = ds, size = size.small))
-    // countdown to the forming HTF bucket close, at the current price
-    remS = int(math.max(0, ((pBktId + 1) * bktSec - timenow) / 1000))
-    hh = int(remS / 3600)
-    mm = int(remS % 3600 / 60)
-    ss = remS % 60
-    txt = (hh < 10 ? "0" : "") + str.tostring(hh) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm) + ":" + (ss < 10 ? "0" : "") + str.tostring(ss)
+    // countdowns: HTF candle close, next range start, current range close
+    nyMin = hour(timenow, "America/New_York") * 60 + minute(timenow, "America/New_York")
+    r1S = rh1 * 60 + rm1
+    r2S = rh2 * 60 + rm2
+    r3S = rh3 * 60 + rm3
+    // next range start (today or tomorrow)
+    ns1 = r1S > nyMin ? r1S : r1S + 1440
+    ns2 = r2S > nyMin ? r2S : r2S + 1440
+    ns3 = r3S > nyMin ? r3S : r3S + 1440
+    nextS = math.min(ns1, math.min(ns2, ns3))
+    nextN = nextS == ns1 ? "R1" : nextS == ns2 ? "R2" : "R3"
+    // current range?
+    curN = ""
+    curE = 0
+    if nyMin >= r1S and nyMin < r1S + i_r1m
+        curN := "R1"
+        curE := r1S + i_r1m
+    else if nyMin >= r2S and nyMin < r2S + i_r2m
+        curN := "R2"
+        curE := r2S + i_r2m
+    else if nyMin >= r3S and nyMin < r3S + i_r3m
+        curN := "R3"
+        curE := r3S + i_r3m
+    remHtf  = ((pBktId + 1) * bktSec - timenow) / 1000
+    remNext = (nextS - nyMin) * 60
+    remClose = (curE - nyMin) * 60
+    txt = i_ptf + "m close: " + f_cnt(remHtf)
+    txt += "\n" + nextN + " start: " + f_cnt(remNext)
+    if curN != ""
+        txt += "\n" + curN + " close: " + f_cnt(remClose)
     fx = bar_index + lead + i_pprev * stepW + slotW + 2
     array.push(pCount, label.new(fx, close, txt, xloc = xloc.bar_index,
          color = color.new(color.black, 0), textcolor = color.white,
