@@ -574,8 +574,14 @@ var array<int>   pCB = array.new_int()
 var array<float> pV  = array.new_float()
 var array<box>   pBoxes = array.new_box()
 var array<line>  pWicks = array.new_line()
-var array<label> pCount = array.new_label()
 var array<label> pDlt = array.new_label()
+
+// persistent forming-candle objects (updated in-place every tick)
+var box   fBox    = na
+var line  fWickUp = na
+var line  fWickDn = na
+var label fDltLbl = na
+var label fCntLbl = na
 
 // estimated buy/sell from candle direction (same convention as range delta)
 bvBar = nz(volume, 0.0)
@@ -613,6 +619,47 @@ else if bkt != pBktId
         array.remove(pV, 0)
         array.remove(pV, 0)
         array.remove(pV, 0)
+    // create objects for the just-closed candle (newest closed = index 0)
+    if i_panel
+        nC2 = array.size(pCB)
+        if nC2 > 0
+            sw = 6
+            ld = 10
+            gw = 3
+            st = sw + gw
+            o2  = array.get(pC, (nC2 - 1) * 4)
+            h2  = array.get(pC, (nC2 - 1) * 4 + 1)
+            l2  = array.get(pC, (nC2 - 1) * 4 + 2)
+            c2  = array.get(pC, (nC2 - 1) * 4 + 3)
+            bb2 = array.get(pV, (nC2 - 1) * 4)
+            bs2 = array.get(pV, (nC2 - 1) * 4 + 1)
+            dx2 = array.get(pV, (nC2 - 1) * 4 + 2)
+            dn2 = array.get(pV, (nC2 - 1) * 4 + 3)
+            lx2 = bar_index + ld + (i_pprev - 1) * st
+            rx2 = lx2 + sw
+            wx2 = lx2 + int(sw / 2)
+            up2 = c2 >= o2
+            bclr2 = up2 ? i_pup : i_pdn
+            wclr2 = up2 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+            bTop2 = math.max(o2, c2)
+            bBot2 = math.min(o2, c2)
+            array.push(pBoxes, box.new(lx2, bTop2, rx2, bBot2, xloc = xloc.bar_index, border_color = bclr2, bgcolor = color.new(bclr2, i_pfill), border_width = 1))
+            if h2 > bTop2
+                array.push(pWicks, line.new(wx2, h2, wx2, bTop2, xloc = xloc.bar_index, color = wclr2, width = 1))
+            else
+                array.push(pWicks, line.new(wx2, h2, wx2, bTop2, xloc = xloc.bar_index, color = wclr2, width = 1))
+            if bBot2 > l2
+                array.push(pWicks, line.new(wx2, bBot2, wx2, l2, xloc = xloc.bar_index, color = wclr2, width = 1))
+            else
+                array.push(pWicks, line.new(wx2, bBot2, wx2, l2, xloc = xloc.bar_index, color = wclr2, width = 1))
+            dd2 = bb2 - bs2
+            dclr2 = dd2 >= 0 ? color.lime : color.red
+            ds2 = dd2 >= 0 ? "+" : ""
+            xs2 = dx2 >= 0 ? "+" : ""
+            dtxt2 = "B " + f_cvol(bb2) + "  S " + f_cvol(bs2) + "\n   Δ " + ds2 + f_cvol(dd2) + "\n   H " + xs2 + f_cvol(dx2) + "  L " + f_cvol(dn2)
+            dy2 = dd2 >= 0 ? h2 + syminfo.mintick * 500 : l2 - syminfo.mintick * 500
+            ds3 = dd2 >= 0 ? label.style_label_down : label.style_label_up
+            array.push(pDlt, label.new(wx2, dy2, dtxt2, xloc = xloc.bar_index, color = color.new(color.black, 25), textcolor = dclr2, style = ds3, size = size.small))
     pBktId := bkt
     pBktO  := open
     pBktH  := high
@@ -632,86 +679,71 @@ else
     pBktDn := math.min(pBktDn, bDelta)
 
 if i_panel
-    while array.size(pBoxes) > 0
-        box.delete(array.shift(pBoxes))
-    while array.size(pWicks) > 0
-        line.delete(array.shift(pWicks))
-    while array.size(pCount) > 0
-        label.delete(array.shift(pCount))
-    while array.size(pDlt) > 0
-        label.delete(array.shift(pDlt))
     nC = array.size(pCB)
     slotW = 6
     lead = 10
     gapW = 3
     stepW = slotW + gapW
-    for j = 0 to i_pprev
-        float o  = na
-        float h  = na
-        float l  = na
-        float c  = na
-        float bb = na
-        float bs = na
-        float dx = na
-        float dn = na
-        if j == 0
-            o  := pBktO
-            h  := pBktH
-            l  := pBktL
-            c  := pBktC
-            bb := pBktB
-            bs := pBktS
-            dx := pBktDx
-            dn := pBktDn
-        else
-            idx = nC - j
-            if idx >= 0
-                base = idx * 4
-                o  := array.get(pC, base)
-                h  := array.get(pC, base + 1)
-                l  := array.get(pC, base + 2)
-                c  := array.get(pC, base + 3)
-                bb := array.get(pV, base)
-                bs := array.get(pV, base + 1)
-                dx := array.get(pV, base + 2)
-                dn := array.get(pV, base + 3)
-        if not na(o) and not na(h) and not na(l)
-            lx = bar_index + lead + (i_pprev - j) * stepW
-            rx = lx + slotW
-            wx = lx + int(slotW / 2)
-            up = c >= o
-            bclr = up ? i_pup : i_pdn
-            wclr = up ? color.new(i_pup, 45) : color.new(i_pdn, 45)
-            bTop = math.max(o, c)
-            bBot = math.min(o, c)
-            if h > bTop
-                array.push(pWicks, line.new(wx, h, wx, bTop, xloc = xloc.bar_index, color = wclr, width = 1))
-            if bBot > l
-                array.push(pWicks, line.new(wx, bBot, wx, l, xloc = xloc.bar_index, color = wclr, width = 1))
-            array.push(pBoxes, box.new(lx, bTop, rx, bBot, xloc = xloc.bar_index,
-                 border_color = bclr, bgcolor = color.new(bclr, i_pfill), border_width = 1))
-            dd = bb - bs
-            dclr = dd >= 0 ? color.lime : color.red
-            dsign = dd >= 0 ? "+" : ""
-            xsign = dx >= 0 ? "+" : ""
-            dtxt = "B " + f_cvol(bb) + "  S " + f_cvol(bs) + "\n   Δ " + dsign + f_cvol(dd) + "\n   H " + xsign + f_cvol(dx) + "  L " + f_cvol(dn)
-            dy = dd >= 0 ? h + syminfo.mintick * 500 : l - syminfo.mintick * 500
-            ds = dd >= 0 ? label.style_label_down : label.style_label_up
-            array.push(pDlt, label.new(wx, dy, dtxt, xloc = xloc.bar_index,
-                 color = color.new(color.black, 25), textcolor = dclr,
-                 style = ds, size = size.small))
-    // countdowns: HTF candle close, next range start, current range close
+
+    // --- forming candle (j=0): always update in-place ---
+    lx0 = bar_index + lead + i_pprev * stepW
+    rx0 = lx0 + slotW
+    wx0 = lx0 + int(slotW / 2)
+    up0 = pBktC >= pBktO
+    bclr0 = up0 ? i_pup : i_pdn
+    wclr0 = up0 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+    bTop0 = math.max(pBktO, pBktC)
+    bBot0 = math.min(pBktO, pBktC)
+
+    if na(fWickUp)
+        fWickUp := line.new(wx0, pBktH, wx0, bTop0, xloc = xloc.bar_index, color = wclr0, width = 1)
+    else
+        line.set_xy1(fWickUp, wx0, pBktH)
+        line.set_xy2(fWickUp, wx0, bTop0)
+        line.set_color(fWickUp, wclr0)
+    if na(fWickDn)
+        fWickDn := line.new(wx0, bBot0, wx0, pBktL, xloc = xloc.bar_index, color = wclr0, width = 1)
+    else
+        line.set_xy1(fWickDn, wx0, bBot0)
+        line.set_xy2(fWickDn, wx0, pBktL)
+        line.set_color(fWickDn, wclr0)
+    if na(fBox)
+        fBox := box.new(lx0, bTop0, rx0, bBot0, xloc = xloc.bar_index, border_color = bclr0, bgcolor = color.new(bclr0, i_pfill), border_width = 1)
+    else
+        box.set_left(fBox, lx0)
+        box.set_top(fBox, bTop0)
+        box.set_right(fBox, rx0)
+        box.set_bottom(fBox, bBot0)
+        box.set_border_color(fBox, bclr0)
+        box.set_bgcolor(fBox, color.new(bclr0, i_pfill))
+
+    // forming delta label
+    dd0 = pBktB - pBktS
+    dclr0 = dd0 >= 0 ? color.lime : color.red
+    dsign0 = dd0 >= 0 ? "+" : ""
+    xsign0 = pBktDx >= 0 ? "+" : ""
+    dtxt0 = "B " + f_cvol(pBktB) + "  S " + f_cvol(pBktS) + "\n   Δ " + dsign0 + f_cvol(dd0) + "\n   H " + xsign0 + f_cvol(pBktDx) + "  L " + f_cvol(pBktDn)
+    dy0 = dd0 >= 0 ? pBktH + syminfo.mintick * 500 : pBktL - syminfo.mintick * 500
+    ds0 = dd0 >= 0 ? label.style_label_down : label.style_label_up
+    if na(fDltLbl)
+        fDltLbl := label.new(wx0, dy0, dtxt0, xloc = xloc.bar_index, color = color.new(color.black, 25), textcolor = dclr0, style = ds0, size = size.small)
+    else
+        label.set_x(fDltLbl, wx0)
+        label.set_y(fDltLbl, dy0)
+        label.set_text(fDltLbl, dtxt0)
+        label.set_textcolor(fDltLbl, dclr0)
+        label.set_style(fDltLbl, ds0)
+
+    // forming countdown label
     nyMin = hour(timenow, "America/New_York") * 60 + minute(timenow, "America/New_York")
     r1S = rh1 * 60 + rm1
     r2S = rh2 * 60 + rm2
     r3S = rh3 * 60 + rm3
-    // next range start (today or tomorrow)
     ns1 = r1S > nyMin ? r1S : r1S + 1440
     ns2 = r2S > nyMin ? r2S : r2S + 1440
     ns3 = r3S > nyMin ? r3S : r3S + 1440
     nextS = math.min(ns1, math.min(ns2, ns3))
     nextN = nextS == ns1 ? "R1" : nextS == ns2 ? "R2" : "R3"
-    // current range?
     curN = ""
     curE = 0
     if nyMin >= r1S and nyMin < r1S + i_r1m
@@ -731,15 +763,92 @@ if i_panel
     if curN != ""
         txt += "\n" + curN + " close: " + f_cnt(remClose)
     fx = bar_index + lead + i_pprev * stepW + slotW + 2
-    array.push(pCount, label.new(fx, close, txt, xloc = xloc.bar_index,
-         color = color.new(color.black, 0), textcolor = color.white,
-         style = label.style_label_left, size = size.small))
+    if na(fCntLbl)
+        fCntLbl := label.new(fx, close, txt, xloc = xloc.bar_index, color = color.new(color.black, 0), textcolor = color.white, style = label.style_label_left, size = size.small)
+    else
+        label.set_x(fCntLbl, fx)
+        label.set_y(fCntLbl, close)
+        label.set_text(fCntLbl, txt)
+
+    // --- closed candles: create once on rollover, update positions only ---
+    while array.size(pBoxes) > i_pprev
+        box.delete(array.shift(pBoxes))
+        line.delete(array.shift(pWicks))
+        line.delete(array.shift(pWicks))
+        label.delete(array.shift(pDlt))
+    for j = 1 to i_pprev
+        idx = nC - j
+        if idx >= 0
+            base = idx * 4
+            o  = array.get(pC, base)
+            h  = array.get(pC, base + 1)
+            l  = array.get(pC, base + 2)
+            c  = array.get(pC, base + 3)
+            bb = array.get(pV, base)
+            bs = array.get(pV, base + 1)
+            dx = array.get(pV, base + 2)
+            dn = array.get(pV, base + 3)
+            lx = bar_index + lead + (i_pprev - j) * stepW
+            rx = lx + slotW
+            wx = lx + int(slotW / 2)
+            up = c >= o
+            bclr = up ? i_pup : i_pdn
+            wclr = up ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+            bTop = math.max(o, c)
+            bBot = math.min(o, c)
+            ci = j - 1
+            if ci < array.size(pBoxes)
+                // update existing
+                box.set_left(array.get(pBoxes, ci), lx)
+                box.set_top(array.get(pBoxes, ci), bTop)
+                box.set_right(array.get(pBoxes, ci), rx)
+                box.set_bottom(array.get(pBoxes, ci), bBot)
+                box.set_border_color(array.get(pBoxes, ci), bclr)
+                box.set_bgcolor(array.get(pBoxes, ci), color.new(bclr, i_pfill))
+                // wicks: update 2 lines per candle
+                wu = ci * 2
+                wd = ci * 2 + 1
+                if wu < array.size(pWicks) and wd < array.size(pWicks)
+                    line.set_xy1(array.get(pWicks, wu), wx, h)
+                    line.set_xy2(array.get(pWicks, wu), wx, bTop)
+                    line.set_color(array.get(pWicks, wu), wclr)
+                    line.set_xy1(array.get(pWicks, wd), wx, bBot)
+                    line.set_xy2(array.get(pWicks, wd), wx, l)
+                    line.set_color(array.get(pWicks, wd), wclr)
+                // delta label
+                if ci < array.size(pDlt)
+                    ddc = bb - bs
+                    dclrc = ddc >= 0 ? color.lime : color.red
+                    dsc = ddc >= 0 ? "+" : ""
+                    xsc = dx >= 0 ? "+" : ""
+                    dtxtc = "B " + f_cvol(bb) + "  S " + f_cvol(bs) + "\n   Δ " + dsc + f_cvol(ddc) + "\n   H " + xsc + f_cvol(dx) + "  L " + f_cvol(dn)
+                    dyc = ddc >= 0 ? h + syminfo.mintick * 500 : l - syminfo.mintick * 500
+                    dsc2 = ddc >= 0 ? label.style_label_down : label.style_label_up
+                    label.set_x(array.get(pDlt, ci), wx)
+                    label.set_y(array.get(pDlt, ci), dyc)
+                    label.set_text(array.get(pDlt, ci), dtxtc)
+                    label.set_textcolor(array.get(pDlt, ci), dclrc)
+                    label.set_style(array.get(pDlt, ci), dsc2)
+
 else
+    if not na(fBox)
+        box.delete(fBox)
+        fBox := na
+    if not na(fWickUp)
+        line.delete(fWickUp)
+        fWickUp := na
+    if not na(fWickDn)
+        line.delete(fWickDn)
+        fWickDn := na
+    if not na(fDltLbl)
+        label.delete(fDltLbl)
+        fDltLbl := na
+    if not na(fCntLbl)
+        label.delete(fCntLbl)
+        fCntLbl := na
     while array.size(pBoxes) > 0
         box.delete(array.shift(pBoxes))
     while array.size(pWicks) > 0
         line.delete(array.shift(pWicks))
-    while array.size(pCount) > 0
-        label.delete(array.shift(pCount))
     while array.size(pDlt) > 0
         label.delete(array.shift(pDlt))
