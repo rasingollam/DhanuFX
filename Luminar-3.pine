@@ -271,11 +271,11 @@ rS = array.from(f_nyBoundary(bt, rh1, rm1), f_nyBoundary(bt, rh2, rm2), f_nyBoun
 rIS = array.from(f_nyBoundary(bt, rih1, rim1), f_nyBoundary(bt, rih2, rim2), f_nyBoundary(bt, rih3, rim3))
 int foundM = -1
 for k = 0 to 2
-    if f_crossed(time[1], time, array.get(rS, k))
+    if f_crossed(time[1], time, array.get(rS, k)) and time < array.get(rS, k) + array.get(nMain, k) * 60000
         foundM := k
 int foundI = -1
 for k = 0 to 2
-    if f_crossed(time[1], time, array.get(rIS, k))
+    if f_crossed(time[1], time, array.get(rIS, k)) and time < array.get(rIS, k) + array.get(nIn, k) * 60000
         foundI := k
 
 //=== 1) MAIN COMPLETION (window ended on/after this bar) ==============
@@ -514,9 +514,9 @@ int actM = -1
 if not na(g_mRe)
     actM := g_mainIdx
 else if foundM >= 0
-    array.set(g_lastRs, foundM, bt)
-    g_mainRs  := bt
-    g_mRe     := bt + array.get(nMain, foundM) * 60000
+    array.set(g_lastRs, foundM, array.get(rS, foundM))
+    g_mainRs  := array.get(rS, foundM)
+    g_mRe     := g_mainRs + array.get(nMain, foundM) * 60000
     g_mainIdx := foundM
     array.clear(g_mH)
     array.clear(g_mL)
@@ -529,8 +529,8 @@ int actI = -1
 if not na(g_inRe)
     actI := g_inIdx
 else if foundI >= 0
-    g_inRs    := bt
-    g_inRe    := bt + array.get(nIn, foundI) * 60000
+    g_inRs    := array.get(rIS, foundI)
+    g_inRe    := g_inRs + array.get(nIn, foundI) * 60000
     g_inIdx   := foundI
     g_inMainRs:= array.get(g_lastRs, foundI)
     g_inMainRe:= na(g_inMainRs) ? na : g_inMainRs + array.get(nMain, foundI) * 60000
