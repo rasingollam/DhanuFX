@@ -48,6 +48,7 @@ i_sessLvl = input.bool(true,    "Show previous-session VAH/VAL/POC", group = "05
 //----- HTF candle overlay -----
 i_panel  = input.bool(true,     "Show HTF candle overlay", group = "07 - HTF candles", tooltip = "Draws the forming N-minute candle (90 by default) plus the last X closed ones directly on the chart at real prices, like a Power of Three HTF overlay.")
 i_ptf    = input.int(90,        "Candle timeframe (minutes)", minval = 1, maxval = 1440, group = "07 - HTF candles")
+i_htfAnchor = input.string("01:30", "Candle open time (NY, HH:mm)", group = "07 - HTF candles", tooltip = "Anchors the i_ptf-minute candle grid so one candle opens exactly at this NY time. Default 01:30 = the 01:30->03:00 candle whose open you were comparing.")
 i_pprev  = input.int(3,         "Previous candles shown", minval = 0, maxval = 20, group = "07 - HTF candles")
 
 //----- Style -----
@@ -670,7 +671,18 @@ if actI >= 0
 // two candle-widths closer than 1 + X (never before the last bar),
 // oldest left, forming right. Redrawn every bar (old objects deleted
 // first, no trails).
-bktSec = int(i_ptf * 60000)
+bktMin = int(i_ptf)
+bktSec = bktMin * 60000
+// Bucket grid anchored at a user-selected NY open time (i_htfAnchor). The
+// pattern repeats daily: boundaries at anchor, anchor+1*len, ... (mod 1440).
+[ahA, amA] = f_parse(i_htfAnchor)
+aMin = ahA * 60 + amA
+nyMo = timestamp("America/New_York", year(bt, "America/New_York"), month(bt, "America/New_York"), dayofmonth(bt, "America/New_York"), 0, 0)
+nMM = hour(bt, "America/New_York") * 60 + minute(bt, "America/New_York")
+bStartMin = int((((nMM - aMin) + 1440) % 1440) / bktMin) * bktMin + aMin
+if bStartMin > nMM
+    bStartMin -= 1440
+bkt = nyMo + bStartMin * 60000
 var int   pBktId   = na
 var float pBktO    = na
 var float pBktH    = na
@@ -699,7 +711,6 @@ bvBar = nz(volume, 0.0)
 bBuy = close > open ? bvBar : close < open ? 0.0 : bvBar / 2
 bSell = bvBar - bBuy
 bDelta = close > open ? bvBar : close < open ? -bvBar : 0.0
-bkt = int((time - (time % bktSec)) / bktSec)
 if na(pBktId)
     pBktId := bkt
     pBktO  := open
@@ -869,7 +880,7 @@ if i_panel
     else if nyMin >= r3S and nyMin < r3S + i_r3m
         curN := "R3"
         curE := r3S + i_r3m
-    remHtf  = ((pBktId + 1) * bktSec - timenow) / 1000
+    remHtf  = (pBktId + bktSec - timenow) / 1000
     remNext = nextS * 60 - nySec
     remClose = curE * 60 - nySec
     txt = str.tostring(i_ptf) + "m close: " + f_cnt(remHtf)
@@ -966,3 +977,24 @@ else
         line.delete(array.shift(pWicks))
     while array.size(pDlt) > 0
         label.delete(array.shift(pDlt))
+
+//=== HTF DEBUG (temporary - remove after fix) ===
+if barstate.islast
+    bs0 = pBktId
+    float tO = na
+    float tH = na
+    float tL = na
+    float tC = na
+    int dq = 1
+    while dq <= 5000 and not na(time[dq]) and time[dq] >= bs0
+        tO := open[dq]
+        tH := na(tH) ? high[dq] : math.max(tH, high[dq])
+        tL := na(tL) ? low[dq]  : math.min(tL, low[dq])
+        tC := close[dq]
+        dq += 1
+    if i_panel
+        log.error("HTFDEBUG tf={0} storedO={1} storedH={2} storedL={3} storedC={4}", timeframe.multiplier, pBktO, pBktH, pBktL, pBktC)
+        log.error("HTFDEBUG trueO={0} trueH={1} trueL={2} trueC={3} curBarO={4}", tO, tH, tL, tC, open)
+        nCx = array.size(pCB)
+        if nCx > 0
+            log.error("HTFDEBUG lastCls O={0} H={1} L={2} C={3}", array.get(pC, (nCx - 1) * 4), array.get(pC, (nCx - 1) * 4 + 1), array.get(pC, (nCx - 1) * 4 + 2), array.get(pC, (nCx - 1) * 4 + 3))
