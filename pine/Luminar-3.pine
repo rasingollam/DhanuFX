@@ -80,10 +80,11 @@ i_panel   = input.bool(true,    "Show HTF candle overlay", group = "4 - HTF Cand
 i_ptf     = input.int(90,       "Candle timeframe (minutes)", minval = 1, maxval = 1440, group = "4 - HTF Candles")
 i_htfAnchor = input.string("01:30", "Candle open time (NY, HH:mm)", group = "4 - HTF Candles", tooltip = "Anchors the i_ptf-minute candle grid so one candle opens exactly at this NY time. Default 01:30 = the 01:30->03:00 candle whose open you were comparing.")
 i_pprev   = input.int(2,        "Previous candles shown", minval = 0, maxval = 20, group = "4 - HTF Candles")
+i_htgap   = input.int(20,       "Gap from chart to HTF candles (bars)", minval = 1, maxval = 100, group = "4 - HTF Candles", tooltip = "Horizontal distance from the current chart candle to the first HTF candle section, measured in chart-timeframe bars.")
 i_lpanel  = input.bool(true,    "Show LTF candle overlay", group = "4 - HTF Candles", tooltip = "Plots a compact lower-timeframe candle cluster (current + N previous) immediately right of the HTF candles, giving intra-candle context.")
 i_ltf     = input.int(15,       "Lower timeframe (minutes)", minval = 1, maxval = 1440, group = "4 - HTF Candles")
 i_ltprev  = input.int(2,        "Previous LTF candles shown", minval = 0, maxval = 10, group = "4 - HTF Candles")
-i_ltgap   = input.int(2,        "Gap to HTF candles (slots)", minval = 0, maxval = 10, group = "4 - HTF Candles")
+i_ltgap   = input.int(1,        "Gap from HTF to LTF candles (slots)", minval = 0, maxval = 20, group = "4 - HTF Candles", tooltip = "Empty candle-width slots between the HTF section and the LTF section.")
 i_pup     = input.color(color.lime, "Up candles", group = "4 - HTF Candles", inline = "htfColors")
 i_pdn     = input.color(color.red, "Down candles", group = "4 - HTF Candles", inline = "htfColors")
 i_pfill   = input.int(30,       "Body fill transparency (%)", minval = 0, maxval = 90, group = "4 - HTF Candles")
@@ -824,7 +825,7 @@ else if bkt != pBktId
         nC2 = array.size(pCB)
         if nC2 > 0
             sw = 6
-            ld = 10
+            ld = i_htgap
             gw = 3
             st = sw + gw
             tMs = timeframe.in_seconds() * 1000
@@ -938,7 +939,7 @@ else if bktL != lFId
             lstep = lsw + lgap
             ltMs = timeframe.in_seconds() * 1000
             lk2 = i_pprev + 1 + i_ltgap + i_ltprev - 1
-            lx2 = time + (10 + lk2 * lstep) * ltMs
+            lx2 = time + (i_htgap + lk2 * lstep) * ltMs
             rx2 = lx2 + lsw * ltMs
             wx2 = lx2 + int(lsw / 2) * ltMs
             lu2 = lC2 >= lO2
@@ -997,7 +998,7 @@ remClose = curE * 60 - nySec
 if i_panel
     nC = array.size(pCB)
     slotW = 6
-    lead = 10
+    lead = i_htgap
     gapW = 3
     stepW = slotW + gapW
     tMs = timeframe.in_seconds() * 1000
@@ -1193,7 +1194,7 @@ else
 
 //===== Info display: volume grid top-right, countdown table bottom-right =====
 // Two tables anchored at different corners (the layout Pine supports without any
-// overlapping). Volume: one value-column per candle (0 = current/forming, 1.. = prev).
+// overlapping). Volume columns interleave HTF/LTF: HTF cur, LTF cur, HTF 1, LTF 1, ...
 htfCols = i_pprev + 1
 ltfCols = i_ltprev + 1
 vCols = 1 + htfCols + ltfCols
@@ -1213,10 +1214,10 @@ if i_showTbl
     table.cell(tbV, 0, 0, "Live", text_color = color.silver, bgcolor = color.new(#2962FF, 40), text_size = size.small)
     for c = 0 to htfCols - 1
         hLab = c == 0 ? hBase : hBase + "-" + str.tostring(c)
-        table.cell(tbV, 1 + c, 0, hLab, text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+        table.cell(tbV, 1 + 2 * c, 0, hLab, text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
     for c = 0 to ltfCols - 1
         lLab = c == 0 ? lBase : lBase + "-" + str.tostring(c)
-        table.cell(tbV, 1 + htfCols + c, 0, lLab, text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+        table.cell(tbV, 2 + 2 * c, 0, lLab, text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
     table.cell(tbV, 0, 1, "Volume", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
     table.cell(tbV, 0, 2, "Buy", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
     table.cell(tbV, 0, 3, "Sell", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
@@ -1244,11 +1245,12 @@ if i_showTbl
         ddH = na(hb) ? na : hb - hs
         hCol = na(ddH) ? color.silver : ddH >= 0 ? color.lime : color.red
         hxCol = na(hx) ? color.silver : hx >= 0 ? color.lime : color.red
-        table.cell(tbV, 1 + c, 1, na(hb) ? "-" : f_cvol(hb + hs), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tbV, 1 + c, 2, na(hb) ? "-" : f_cvol(hb), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tbV, 1 + c, 3, na(hb) ? "-" : f_cvol(hs), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tbV, 1 + c, 4, na(ddH) ? "-" : (ddH >= 0 ? "+" : "") + f_cvol(ddH), text_color = hCol, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tbV, 1 + c, 5, na(hx) ? "-" : (hx >= 0 ? "+" : "") + f_cvol(hx) + " / " + (hn >= 0 ? "+" : "") + f_cvol(hn), text_color = hxCol, bgcolor = color.new(color.black, 60), text_size = size.small)
+        hcc = 1 + 2 * c
+        table.cell(tbV, hcc, 1, na(hb) ? "-" : f_cvol(hb + hs), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tbV, hcc, 2, na(hb) ? "-" : f_cvol(hb), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tbV, hcc, 3, na(hb) ? "-" : f_cvol(hs), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tbV, hcc, 4, na(ddH) ? "-" : (ddH >= 0 ? "+" : "") + f_cvol(ddH), text_color = hCol, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tbV, hcc, 5, na(hx) ? "-" : (hx >= 0 ? "+" : "") + f_cvol(hx) + " / " + (hn >= 0 ? "+" : "") + f_cvol(hn), text_color = hxCol, bgcolor = color.new(color.black, 60), text_size = size.small)
     // LTF columns
     for c = 0 to ltfCols - 1
         float lb = na
@@ -1271,7 +1273,7 @@ if i_showTbl
         ddL = na(lb) ? na : lb - ls
         lCol = na(ddL) ? color.silver : ddL >= 0 ? color.lime : color.red
         lxCol = na(lx) ? color.silver : lx >= 0 ? color.lime : color.red
-        cc = 1 + htfCols + c
+        cc = 2 + 2 * c
         table.cell(tbV, cc, 1, na(lb) ? "-" : f_cvol(lb + ls), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
         table.cell(tbV, cc, 2, na(lb) ? "-" : f_cvol(lb), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
         table.cell(tbV, cc, 3, na(lb) ? "-" : f_cvol(ls), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
