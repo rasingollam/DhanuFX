@@ -1135,7 +1135,8 @@ else
         line.delete(array.shift(lWicks))
 
 //===== Top-right info table: all HTF/LTF candle volume + countdowns =====
-// One value-column per visible candle (0 = current/forming, 1.. = previous).
+// One value-column per visible candle (0 = current/forming, 1.. = previous),
+// countdown rows below (key | value).
 htfCols = i_pprev + 1
 ltfCols = i_ltprev + 1
 totCols = 1 + htfCols + ltfCols
@@ -1147,7 +1148,7 @@ if i_showTbl
             table.merge_cells(tb, 1, cr, totCols - 1, cr)
     thN = array.size(pCB)
     tlN = array.size(lCB)
-    // section header
+    // header bar - all columns share the same bar
     hBase = str.tostring(i_ptf) + "m"
     lBase = str.tostring(i_ltf) + "m"
     table.cell(tb, 0, 0, "Live", text_color = color.silver, bgcolor = color.new(#2962FF, 40), text_size = size.small)
@@ -1218,7 +1219,7 @@ if i_showTbl
         table.cell(tb, cc, 3, na(lb) ? "-" : f_cvol(ls), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
         table.cell(tb, cc, 4, na(ddL) ? "-" : (ddL >= 0 ? "+" : "") + f_cvol(ddL), text_color = lCol, bgcolor = color.new(color.black, 60), text_size = size.small)
         table.cell(tb, cc, 5, na(lx) ? "-" : (lx >= 0 ? "+" : "") + f_cvol(lx) + " / " + (ln >= 0 ? "+" : "") + f_cvol(ln), text_color = lxCol, bgcolor = color.new(color.black, 60), text_size = size.small)
-    // countdown section
+    // countdown section - key | value rows (merged across the columns)
     table.cell(tb, 0, 6, "Countdown", text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
     table.cell(tb, 0, 7, str.tostring(i_ptf) + "m close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
     table.cell(tb, 1, 7, f_cnt(remHtf), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
