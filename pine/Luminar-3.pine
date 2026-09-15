@@ -79,7 +79,11 @@ i_szS     = input.string("dotted", "VAH/VAL/POC line style", options = ["solid",
 i_panel   = input.bool(true,    "Show HTF candle overlay", group = "4 - HTF Candles", tooltip = "Draws the forming N-minute candle (90 by default) plus the last X closed ones directly on the chart at real prices, like a Power of Three HTF overlay.")
 i_ptf     = input.int(90,       "Candle timeframe (minutes)", minval = 1, maxval = 1440, group = "4 - HTF Candles")
 i_htfAnchor = input.string("01:30", "Candle open time (NY, HH:mm)", group = "4 - HTF Candles", tooltip = "Anchors the i_ptf-minute candle grid so one candle opens exactly at this NY time. Default 01:30 = the 01:30->03:00 candle whose open you were comparing.")
-i_pprev   = input.int(3,        "Previous candles shown", minval = 0, maxval = 20, group = "4 - HTF Candles")
+i_pprev   = input.int(2,        "Previous candles shown", minval = 0, maxval = 20, group = "4 - HTF Candles")
+i_lpanel  = input.bool(true,    "Show LTF candle overlay", group = "4 - HTF Candles", tooltip = "Plots a compact lower-timeframe candle cluster (current + N previous) immediately left of the HTF candles, giving intra-candle context.")
+i_ltf     = input.int(15,       "Lower timeframe (minutes)", minval = 1, maxval = 1440, group = "4 - HTF Candles")
+i_ltprev  = input.int(2,        "Previous LTF candles shown", minval = 0, maxval = 10, group = "4 - HTF Candles")
+i_ltgap   = input.int(2,        "Gap to HTF candles (slots)", minval = 0, maxval = 10, group = "4 - HTF Candles")
 i_pup     = input.color(color.lime, "Up candles", group = "4 - HTF Candles", inline = "htfColors")
 i_pdn     = input.color(color.red, "Down candles", group = "4 - HTF Candles", inline = "htfColors")
 i_pfill   = input.int(30,       "Body fill transparency (%)", minval = 0, maxval = 90, group = "4 - HTF Candles")
@@ -777,7 +781,7 @@ else if bkt != pBktId
             bs2 = array.get(pV, (nC2 - 1) * 4 + 1)
             dx2 = array.get(pV, (nC2 - 1) * 4 + 2)
             dn2 = array.get(pV, (nC2 - 1) * 4 + 3)
-            lx2 = time + (ld + (i_pprev - 1) * st) * tMs
+            lx2 = time + (ld + (i_ltprev + i_ltgap + i_pprev - 1) * st) * tMs
             rx2 = lx2 + sw * tMs
             wx2 = lx2 + int(sw / 2) * tMs
             up2 = c2 >= o2
@@ -820,6 +824,80 @@ else
     pBktDx := math.max(pBktDx, bDelta)
     pBktDn := math.min(pBktDn, bDelta)
 
+//===== LTF (lower timeframe) candle overlay =====
+// Same NY-anchored minute grid as HTF, but stepped by i_ltf minutes, so LTF
+// candles align exactly with the HTF candle boundaries. Drawn as a compact
+// cluster left of the HTF candles (current + previous i_ltprev).
+bktMinL = int(i_ltf)
+bStartMinL = int((((nMM - aMin) + 1440) % 1440) / bktMinL) * bktMinL + aMin
+if bStartMinL > nMM
+    bStartMinL -= 1440
+bktL = nyMo + bStartMinL * 60000
+
+var int   lFId = na
+var float lFO  = na
+var float lFH  = na
+var float lFL  = na
+var float lFC  = na
+var array<float> lC  = array.new_float()
+var array<int>   lCB = array.new_int()
+var array<box>   lBoxes = array.new_box()
+var array<line>  lWicks = array.new_line()
+var box   lfBox    = na
+var line  lfWickUp = na
+var line  lfWickDn = na
+
+if na(lFId)
+    lFId := bktL
+    lFO  := open
+    lFH  := high
+    lFL  := low
+    lFC  := close
+else if bktL != lFId
+    array.push(lC, lFO)
+    array.push(lC, lFH)
+    array.push(lC, lFL)
+    array.push(lC, lFC)
+    array.push(lCB, lFId)
+    while array.size(lCB) > i_ltprev
+        array.remove(lCB, 0)
+        array.remove(lC, 0)
+        array.remove(lC, 0)
+        array.remove(lC, 0)
+        array.remove(lC, 0)
+    if i_panel and i_lpanel and i_ltprev >= 1
+        nL2 = array.size(lCB)
+        if nL2 > 0
+            lO2 = array.get(lC, (nL2 - 1) * 4)
+            lH2 = array.get(lC, (nL2 - 1) * 4 + 1)
+            lL2 = array.get(lC, (nL2 - 1) * 4 + 2)
+            lC2 = array.get(lC, (nL2 - 1) * 4 + 3)
+            lsw = 6
+            lgap = 3
+            lstep = lsw + lgap
+            ltMs = timeframe.in_seconds() * 1000
+            lk2 = i_ltprev - 1
+            lx2 = time + (10 + lk2 * lstep) * ltMs
+            rx2 = lx2 + lsw * ltMs
+            wx2 = lx2 + int(lsw / 2) * ltMs
+            lu2 = lC2 >= lO2
+            lb2 = lu2 ? i_pup : i_pdn
+            lw2 = lu2 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+            ltp2 = math.max(lO2, lC2)
+            lbt2 = math.min(lO2, lC2)
+            array.push(lBoxes, box.new(lx2, ltp2, rx2, lbt2, xloc = xloc.bar_time, border_color = lb2, bgcolor = color.new(lb2, i_pfill), border_width = 1))
+            array.push(lWicks, line.new(wx2, lH2, wx2, ltp2, xloc = xloc.bar_time, color = lw2, width = 1))
+            array.push(lWicks, line.new(wx2, lbt2, wx2, lL2, xloc = xloc.bar_time, color = lw2, width = 1))
+    lFId := bktL
+    lFO  := open
+    lFH  := high
+    lFL  := low
+    lFC  := close
+else
+    lFH := math.max(lFH, high)
+    lFL := math.min(lFL, low)
+    lFC := close
+
 if i_panel
     nC = array.size(pCB)
     slotW = 6
@@ -827,9 +905,10 @@ if i_panel
     gapW = 3
     stepW = slotW + gapW
     tMs = timeframe.in_seconds() * 1000
+    kOff = i_ltprev + i_ltgap
 
     // --- forming candle (j=0): always update in-place ---
-    lx0 = time + (lead + i_pprev * stepW) * tMs
+    lx0 = time + (lead + (kOff + i_pprev) * stepW) * tMs
     rx0 = lx0 + slotW * tMs
     wx0 = lx0 + int(slotW / 2) * tMs
     up0 = pBktC >= pBktO
@@ -906,7 +985,7 @@ if i_panel
     txt += "\n" + nextN + " start: " + f_cnt(remNext)
     if curN != ""
         txt += "\n" + curN + " close: " + f_cnt(remClose)
-    fx = time + (lead + i_pprev * stepW + slotW + 2) * tMs
+    fx = time + (lead + (kOff + i_pprev) * stepW + slotW + 2) * tMs
     if na(fCntLbl)
         fCntLbl := label.new(fx, close, txt, xloc = xloc.bar_time, color = color.new(color.black, 0), textcolor = color.white, style = label.style_label_left, size = size.small)
     else
@@ -932,7 +1011,7 @@ if i_panel
             bs = array.get(pV, base + 1)
             dx = array.get(pV, base + 2)
             dn = array.get(pV, base + 3)
-            lx = time + (lead + (i_pprev - j) * stepW) * tMs
+            lx = time + (lead + (kOff + i_pprev - j) * stepW) * tMs
             rx = lx + slotW * tMs
             wx = lx + int(slotW / 2) * tMs
             up = c >= o
@@ -974,6 +1053,89 @@ if i_panel
                     label.set_textcolor(array.get(pDlt, ci), dclrc)
                     label.set_style(array.get(pDlt, ci), dsc2)
 
+    // --- LTF cluster (persistent objects, repositioned every bar) ---
+    if i_lpanel
+        // forming / current LTF candle (rightmost of the LTF cluster)
+        lxL0 = time + (lead + i_ltprev * stepW) * tMs
+        rxL0 = lxL0 + slotW * tMs
+        wxL0 = lxL0 + int(slotW / 2) * tMs
+        lup0 = lFC >= lFO
+        lb0 = lup0 ? i_pup : i_pdn
+        lw0 = lup0 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+        ltp0 = math.max(lFO, lFC)
+        lbt0 = math.min(lFO, lFC)
+        if na(lfBox)
+            lfBox := box.new(lxL0, ltp0, rxL0, lbt0, xloc = xloc.bar_time, border_color = lb0, bgcolor = color.new(lb0, i_pfill), border_width = 1)
+            lfWickUp := line.new(wxL0, lFH, wxL0, ltp0, xloc = xloc.bar_time, color = lw0, width = 1)
+            lfWickDn := line.new(wxL0, lbt0, wxL0, lFL, xloc = xloc.bar_time, color = lw0, width = 1)
+        else
+            box.set_left(lfBox, lxL0)
+            box.set_top(lfBox, ltp0)
+            box.set_right(lfBox, rxL0)
+            box.set_bottom(lfBox, lbt0)
+            box.set_border_color(lfBox, lb0)
+            box.set_bgcolor(lfBox, color.new(lb0, i_pfill))
+            line.set_xy1(lfWickUp, wxL0, lFH)
+            line.set_xy2(lfWickUp, wxL0, ltp0)
+            line.set_color(lfWickUp, lw0)
+            line.set_xy1(lfWickDn, wxL0, lbt0)
+            line.set_xy2(lfWickDn, wxL0, lFL)
+            line.set_color(lfWickDn, lw0)
+        // previous LTF candles
+        nL = array.size(lCB)
+        while array.size(lBoxes) > i_ltprev
+            box.delete(array.shift(lBoxes))
+            line.delete(array.shift(lWicks))
+            line.delete(array.shift(lWicks))
+        for jL = 1 to i_ltprev
+            iL = nL - jL
+            if iL >= 0
+                bL = iL * 4
+                oL = array.get(lC, bL)
+                hL = array.get(lC, bL + 1)
+                lL = array.get(lC, bL + 2)
+                cL = array.get(lC, bL + 3)
+                lk3 = i_ltprev - jL
+                lxL = time + (lead + lk3 * stepW) * tMs
+                rxL = lxL + slotW * tMs
+                wxL = lxL + int(slotW / 2) * tMs
+                lupC = cL >= oL
+                lbC = lupC ? i_pup : i_pdn
+                lwC = lupC ? color.new(i_pup, 45) : color.new(i_pdn, 45)
+                ltpC = math.max(oL, cL)
+                lbtC = math.min(oL, cL)
+                ciL = array.size(lBoxes) - jL
+                if ciL >= 0
+                    box.set_left(array.get(lBoxes, ciL), lxL)
+                    box.set_top(array.get(lBoxes, ciL), ltpC)
+                    box.set_right(array.get(lBoxes, ciL), rxL)
+                    box.set_bottom(array.get(lBoxes, ciL), lbtC)
+                    box.set_border_color(array.get(lBoxes, ciL), lbC)
+                    box.set_bgcolor(array.get(lBoxes, ciL), color.new(lbC, i_pfill))
+                    wuL = ciL * 2
+                    wdL = ciL * 2 + 1
+                    if wuL < array.size(lWicks) and wdL < array.size(lWicks)
+                        line.set_xy1(array.get(lWicks, wuL), wxL, hL)
+                        line.set_xy2(array.get(lWicks, wuL), wxL, ltpC)
+                        line.set_color(array.get(lWicks, wuL), lwC)
+                        line.set_xy1(array.get(lWicks, wdL), wxL, lbtC)
+                        line.set_xy2(array.get(lWicks, wdL), wxL, lL)
+                        line.set_color(array.get(lWicks, wdL), lwC)
+    else
+        if not na(lfBox)
+            box.delete(lfBox)
+            lfBox := na
+        if not na(lfWickUp)
+            line.delete(lfWickUp)
+            lfWickUp := na
+        if not na(lfWickDn)
+            line.delete(lfWickDn)
+            lfWickDn := na
+        while array.size(lBoxes) > 0
+            box.delete(array.shift(lBoxes))
+        while array.size(lWicks) > 0
+            line.delete(array.shift(lWicks))
+
 else
     if not na(fBox)
         box.delete(fBox)
@@ -996,3 +1158,16 @@ else
         line.delete(array.shift(pWicks))
     while array.size(pDlt) > 0
         label.delete(array.shift(pDlt))
+    if not na(lfBox)
+        box.delete(lfBox)
+        lfBox := na
+    if not na(lfWickUp)
+        line.delete(lfWickUp)
+        lfWickUp := na
+    if not na(lfWickDn)
+        line.delete(lfWickDn)
+        lfWickDn := na
+    while array.size(lBoxes) > 0
+        box.delete(array.shift(lBoxes))
+    while array.size(lWicks) > 0
+        line.delete(array.shift(lWicks))
