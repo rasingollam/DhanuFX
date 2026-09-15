@@ -89,7 +89,7 @@ i_pdn     = input.color(color.red, "Down candles", group = "4 - HTF Candles", in
 i_pfill   = input.int(30,       "Body fill transparency (%)", minval = 0, maxval = 90, group = "4 - HTF Candles")
 
 //--- 5 - General ---
-i_showPrev = input.bool(true,   "Show historical drawings", group = "5 - General", tooltip = "ON keeps all drawings. OFF shows only drawings whose range/session starts after the last NY divider (current session). Object limits can also trim the oldest drawings.")
+i_showPrev = input.bool(true,   "Show historical drawings", group = "5 - General", tooltip = "ON keeps all drawings. OFF keeps only drawings from the current calendar day (NY midnight to midnight); earlier days' drawings are removed at each NY midnight. Object limits can also trim the oldest drawings.")
 i_showTbl  = input.bool(true,   "Show info table (top right)", group = "5 - General", tooltip = "Top-right table with live HTF/LTF candle volume, buy/sell/delta and the HTF/LTF/range countdowns.")
 
 //------------ helpers ------------
@@ -376,9 +376,13 @@ curSessionStart = f_sessionStart(last_bar_time, divh, divm)
 sessionStart = f_sessionStart(bt, divh, divm)
 newSession = not na(sessionStart[1]) and sessionStart != sessionStart[1]
 
-// In current-session-only mode, discard earlier sessions' objects at each boundary.
+curDayMid  = f_sessionStart(last_bar_time, 0, 0)
+dayMid     = f_sessionStart(bt, 0, 0)
+newDay     = not na(dayMid[1]) and dayMid != dayMid[1]
+
+// In current-day-only mode, discard earlier days' objects at each midnight boundary.
 // State is retained so a window spanning the boundary can finish normally.
-if not i_showPrev and newSession
+if not i_showPrev and newDay
     while array.size(g_boxes) > 0
         box.delete(array.shift(g_boxes))
     while array.size(g_lines) > 0
@@ -405,7 +409,7 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
     re = g_mRe
     hi = f_arrMax(g_mH)
     lo = f_arrMin(g_mL)
-    if not na(hi) and hi > lo and (i_showPrev or rs >= curSessionStart)
+    if not na(hi) and hi > lo and (i_showPrev or rs >= curDayMid)
         color col   = array.get(cMain, k)
         mins    = array.get(nMain, k)
         lineEnd = rs + 4 * mins * 60000
@@ -529,7 +533,7 @@ if not na(g_inRe) and not na(g_inRs) and g_inIdx >= 0 and bt >= g_inRe
     giM = not na(g_inMainRs) and g_inMainRs <= rsI and reI <= g_inMainRe
     hiI = f_arrMax(g_iH)
     loI = f_arrMin(g_iL)
-    if not na(hiI) and hiI > loI and giM and (i_showPrev or rsI >= curSessionStart)
+    if not na(hiI) and hiI > loI and giM and (i_showPrev or rsI >= curDayMid)
         leI = na(g_inLineEnd) ? reI + 3 * array.get(nIn, g_inIdx) * 60000 : g_inLineEnd
         rgOnI = g_inIdx == 0 ? i_showR1 : g_inIdx == 1 ? i_showR2 : i_showR3
         if i_showInside and rgOnI
