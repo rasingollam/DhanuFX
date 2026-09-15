@@ -73,7 +73,7 @@ i_pvah    = input.color(color.fuchsia, "VAH", group = "3 - Session", inline = "s
 i_ppoc    = input.color(#FF4500, "POC", group = "3 - Session", inline = "sessColors")
 i_szLvl   = input.string("normal", "VAH/VAL/POC label size", options = ["tiny", "small", "normal", "large", "huge"], group = "3 - Session")
 i_szW     = input.int(2,        "VAH/VAL/POC line thickness (px)", minval = 1, maxval = 10, group = "3 - Session")
-i_szS     = input.string("dotted", "VAH/VAL/POC line style", options = ["solid", "dotted", "dashed"], group = "3 - Session")
+i_szS     = input.string("dashed", "VAH/VAL/POC line style", options = ["solid", "dotted", "dashed"], group = "3 - Session")
 
 //--- 4 - HTF Candles ---
 i_panel   = input.bool(true,    "Show HTF candle overlay", group = "4 - HTF Candles", tooltip = "Draws the forming N-minute candle (90 by default) plus the last X closed ones directly on the chart at real prices, like a Power of Three HTF overlay.")
@@ -94,6 +94,7 @@ i_pfill   = input.int(30,       "Body fill transparency (%)", minval = 0, maxval
 //--- 5 - General ---
 i_showPrev = input.bool(true,   "Show historical drawings", group = "5 - General", tooltip = "ON keeps all drawings. OFF keeps only drawings from the current period onward (at/after the current session-start divider); older drawings are removed at each new session boundary. Object limits can also trim the oldest drawings.")
 i_showTbl  = input.bool(true,   "Show info tables", group = "5 - General", tooltip = "Top-right table with live HTF/LTF candle volume, buy/sell/delta and the HTF/LTF/range countdowns.")
+i_theme    = input.string("Auto", "Chart theme", options = ["Auto", "Dark", "Light"], group = "5 - General", tooltip = "Auto reads the chart background and adapts the indicator's chart-level colors (midlines, volume/VA text, histogram bins). Dark/Light force a theme. Your range/session/HTF color inputs are always respected.")
 
 //------------ helpers ------------
 // Standard helpers
@@ -204,6 +205,27 @@ f_cnt(sec) =>
     mm = int(math.max(0, sec) % 3600 / 60)
     ss = int(math.max(0, sec)) % 60
     (hh < 10 ? "0" : "") + str.tostring(hh) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm) + ":" + (ss < 10 ? "0" : "") + str.tostring(ss)
+
+//------------ chart theme detection (Auto / Dark / Light) ------------
+// Perceived luminance of a color (0 = black, 1 = white).
+f_luma(c) =>
+    (0.299 * color.r(c) + 0.587 * color.g(c) + 0.114 * color.b(c)) / 255.0
+
+tDark = i_theme == "Dark"
+     ? true
+     : i_theme == "Light"
+     ? false
+     : (na(chart.bg_color) ? true : f_luma(chart.bg_color) < 0.5)
+
+// Chart-level colors. Bright defaults (white/silver) built for the dark theme
+// are automatically darkened on a light background only if the user left them
+// bright enough to become invisible.
+tBlendText = tDark ? color.white : #111318
+tBlendDim  = tDark ? color.gray  : #6B7280
+cMidEff    = tDark or f_luma(c_mid1) < 0.75 ? c_mid1 : tBlendDim
+tVptxEff   = tDark or f_luma(i_vptxt) < 0.75 ? i_vptxt : tBlendText
+tVacEff    = tDark or f_luma(i_vac) < 0.75 ? i_vac : tBlendText
+tBinGray   = tDark ? color.gray : #8A8F98
 
 //------------ FIFO garbage collection (deterministic, stays under the 500 hard cap) ------------
 // Register each object so explicit deletion and budgets stay synchronized.
@@ -481,7 +503,7 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
             f_regLine(line.new(re, hi, lineEnd, hi, xloc.bar_time, color = col, style = f_lstyle(i_hlS), width = i_hlW))
             f_regLine(line.new(re, lo, lineEnd, lo, xloc.bar_time, color = col, style = f_lstyle(i_hlS), width = i_hlW))
             f_regLine(line.new(re, (hi + lo) / 2, lineEnd, (hi + lo) / 2, xloc.bar_time,
-                 color = c_mid1, style = f_lstyle(i_midS), width = i_midW))
+                 color = cMidEff, style = f_lstyle(i_midS), width = i_midW))
         // ---- volume profile (overlap-weighted bins) ----
         levels = math.max(2, i_vplvls)
         step   = (hi - lo) / levels
@@ -531,14 +553,14 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                     bhi = lo + (q + 1) * step
                     bclr = (q == poc or q == va_lo or q == va_hi)
                          ? color.new(i_pocc, 35)
-                         : (q >= va_lo and q <= va_hi ? color.new(i_vac, 35) : color.new(col, i_opac))
+                         : (q >= va_lo and q <= va_hi ? color.new(tVacEff, 35) : color.new(col, i_opac))
                     f_regBox(box.new(t1, bhi, int(rs - int(i_vpgap * 60000)), blo, xloc = xloc.bar_time,
                          border_color = bclr, bgcolor = bclr, border_width = 1))
                     if i_binTxt
                         tv = str.tostring(int(math.round(vq)))
                         f_regLabel(label.new(int(t1 - i_txtGap * 60000 - str.length(tv) * i_txtCw * 60000 / 2),
                              (blo + bhi) / 2 - step * 0.2, tv,
-                             xloc = xloc.bar_time, color = na, textcolor = i_vptxt,
+                             xloc = xloc.bar_time, color = na, textcolor = tVptxEff,
                              style = label.style_none, size = size.small))
                     // POC / VAH / VAL word labels centered inside their own bin
                     if q == poc
@@ -547,11 +569,11 @@ if not na(g_mRe) and not na(g_mainRs) and g_mainIdx >= 0 and bt >= g_mRe
                              style = label.style_none, size = size.small))
                     if q == va_hi
                         f_regLabel(label.new(int(rs - int(i_vpgap * 60000) - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAH",
-                             xloc = xloc.bar_time, color = na, textcolor = i_vac,
-                             style = label.style_none, size = size.small))
+xloc = xloc.bar_time, color = na, textcolor = tVacEff,
+             style = label.style_none, size = size.small))
                     if q == va_lo
                         f_regLabel(label.new(int(rs - int(i_vpgap * 60000) - wq / 2), (blo + bhi) / 2 - step * 0.4, "VAL",
-                             xloc = xloc.bar_time, color = na, textcolor = i_vac,
+                             xloc = xloc.bar_time, color = na, textcolor = tVacEff,
                              style = label.style_none, size = size.small))
 // ---- delta spread across the range top ----
         if i_delta and array.sum(g_mV) > 0
@@ -1192,7 +1214,7 @@ if i_panel
                              ? color.new(i_pval, 25)
                              : q == vVaHi
                              ? color.new(i_pvah, 25)
-                             : (q >= vVaLo and q <= vVaHi) ? color.new(i_vac, 45) : color.new(color.gray, 35)
+                             : (q >= vVaLo and q <= vVaHi) ? color.new(tVacEff, 45) : color.new(tBinGray, 35)
                         array.push(vpBoxes, box.new(0, bhiP, 0, bloP, xloc = xloc.bar_time, border_color = bclrP, bgcolor = bclrP, border_width = 1))
                         array.push(vpW, wqP)
                         if q == vPoc
