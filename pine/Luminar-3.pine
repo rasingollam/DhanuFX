@@ -205,8 +205,8 @@ f_cnt(sec) =>
 //------------ FIFO garbage collection (deterministic, stays under the 500 hard cap) ------------
 // Register each object so explicit deletion and budgets stay synchronized.
 // Retention depends on bin count and label settings; it is not a fixed day count.
-const int OCAP_BOX = 480
-const int OCAP_LIN = 480
+const int OCAP_BOX = 460
+const int OCAP_LIN = 420
 const int OCAP_LBL = 480
 var array<box>   g_boxes  = array.new_box()
 var array<line>  g_lines  = array.new_line()
@@ -599,8 +599,81 @@ var label cVahS = na
 var label cVahE = na
 var label cPocS = na
 var label cPocE = na
-if i_sessLvl and not na(curSessionStart) and barstate.islast and curSessionStart != g_lCur
-    g_lCur := curSessionStart
+var float cVal = na
+var float cVah = na
+var float cPoc = na
+
+// This is the completed prior session's profile projected across the active
+// session. Calculate it during the historical pass as soon as execution enters
+// the active session. At that point the source window is directly behind the
+// current bar, avoiding a near-3000-bar scan from the last bar on M1 charts.
+// A failed calculation leaves g_lCur unchanged, so each following bar retries.
+if i_sessLvl and not na(curSessionStart) and sessionStart == curSessionStart and (na(g_lCur) or curSessionStart != g_lCur)
+    [cv, cvah, cpoc] = f_sessionPrices(curSessionStart)
+    if not na(cv) and not na(cvah) and not na(cpoc)
+        cVal := cv
+        cVah := cvah
+        cPoc := cpoc
+        g_lCur := curSessionStart
+
+// Render only on the last bar. These dedicated objects are never registered
+// in, or deleted by, the i_showPrev purge arrays and are updated in place.
+if i_sessLvl and barstate.islast and not na(curSessionStart)
+    if g_lCur == curSessionStart and not na(cVal) and not na(cVah) and not na(cPoc)
+        cE = f_sessionNext(curSessionStart, divh, divm)
+        if na(cValL)
+            cValL := line.new(curSessionStart, cVal, cE, cVal, xloc.bar_time, color = i_pval, style = f_lstyle(i_szS), width = i_szW)
+            cValS := label.new(curSessionStart, cVal, "VAL", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl))
+            cValE := label.new(cE, cVal, "VAL", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl))
+            cVahL := line.new(curSessionStart, cVah, cE, cVah, xloc.bar_time, color = i_pvah, style = f_lstyle(i_szS), width = i_szW)
+            cVahS := label.new(curSessionStart, cVah, "VAH", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl))
+            cVahE := label.new(cE, cVah, "VAH", xloc = xloc.bar_time, color = na,
+                 textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl))
+            cPocL := line.new(curSessionStart, cPoc, cE, cPoc, xloc.bar_time, color = i_ppoc, style = f_lstyle(i_szS), width = i_szW)
+            cPocS := label.new(curSessionStart, cPoc, "POC", xloc = xloc.bar_time, color = na,
+                 textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl))
+            cPocE := label.new(cE, cPoc, "POC", xloc = xloc.bar_time, color = na,
+                 textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl))
+        else
+            line.set_xy1(cValL, curSessionStart, cVal)
+            line.set_xy2(cValL, cE, cVal)
+            line.set_color(cValL, i_pval)
+            line.set_style(cValL, f_lstyle(i_szS))
+            line.set_width(cValL, i_szW)
+            label.set_xy(cValS, curSessionStart, cVal)
+            label.set_textcolor(cValS, i_pval)
+            label.set_size(cValS, f_lsize(i_szLvl))
+            label.set_xy(cValE, cE, cVal)
+            label.set_textcolor(cValE, i_pval)
+            label.set_size(cValE, f_lsize(i_szLvl))
+
+            line.set_xy1(cVahL, curSessionStart, cVah)
+            line.set_xy2(cVahL, cE, cVah)
+            line.set_color(cVahL, i_pvah)
+            line.set_style(cVahL, f_lstyle(i_szS))
+            line.set_width(cVahL, i_szW)
+            label.set_xy(cVahS, curSessionStart, cVah)
+            label.set_textcolor(cVahS, i_pvah)
+            label.set_size(cVahS, f_lsize(i_szLvl))
+            label.set_xy(cVahE, cE, cVah)
+            label.set_textcolor(cVahE, i_pvah)
+            label.set_size(cVahE, f_lsize(i_szLvl))
+
+            line.set_xy1(cPocL, curSessionStart, cPoc)
+            line.set_xy2(cPocL, cE, cPoc)
+            line.set_color(cPocL, i_ppoc)
+            line.set_style(cPocL, f_lstyle(i_szS))
+            line.set_width(cPocL, i_szW)
+            label.set_xy(cPocS, curSessionStart, cPoc)
+            label.set_textcolor(cPocS, i_ppoc)
+            label.set_size(cPocS, f_lsize(i_szLvl))
+            label.set_xy(cPocE, cE, cPoc)
+            label.set_textcolor(cPocE, i_ppoc)
+            label.set_size(cPocE, f_lsize(i_szLvl))
+else if barstate.islast
     if not na(cValL)
         line.delete(cValL)
         cValL := na
@@ -628,24 +701,6 @@ if i_sessLvl and not na(curSessionStart) and barstate.islast and curSessionStart
     if not na(cPocE)
         label.delete(cPocE)
         cPocE := na
-    [cv, cvah, cpoc] = f_sessionPrices(curSessionStart)
-    if not na(cv) and not na(cvah) and not na(cpoc)
-        cE = curSessionStart + 86400000
-        cValL := line.new(curSessionStart, cv, cE, cv, xloc.bar_time, color = i_pval, style = f_lstyle(i_szS), width = i_szW)
-        cValS := label.new(curSessionStart, cv, "VAL", xloc = xloc.bar_time, color = na,
-             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl))
-        cValE := label.new(cE, cv, "VAL", xloc = xloc.bar_time, color = na,
-             textcolor = i_pval, style = label.style_none, size = f_lsize(i_szLvl))
-        cVahL := line.new(curSessionStart, cvah, cE, cvah, xloc.bar_time, color = i_pvah, style = f_lstyle(i_szS), width = i_szW)
-        cVahS := label.new(curSessionStart, cvah, "VAH", xloc = xloc.bar_time, color = na,
-             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl))
-        cVahE := label.new(cE, cvah, "VAH", xloc = xloc.bar_time, color = na,
-             textcolor = i_pvah, style = label.style_none, size = f_lsize(i_szLvl))
-        cPocL := line.new(curSessionStart, cpoc, cE, cpoc, xloc.bar_time, color = i_ppoc, style = f_lstyle(i_szS), width = i_szW)
-        cPocS := label.new(curSessionStart, cpoc, "POC", xloc = xloc.bar_time, color = na,
-             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl))
-        cPocE := label.new(cE, cpoc, "POC", xloc = xloc.bar_time, color = na,
-             textcolor = i_ppoc, style = label.style_none, size = f_lsize(i_szLvl))
 
 //=== 3) STARTS =========================================================
 int actM = -1
