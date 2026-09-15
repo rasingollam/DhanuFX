@@ -90,6 +90,7 @@ i_pfill   = input.int(30,       "Body fill transparency (%)", minval = 0, maxval
 
 //--- 5 - General ---
 i_showPrev = input.bool(true,   "Show historical drawings", group = "5 - General", tooltip = "ON keeps all drawings. OFF shows only drawings whose range/session starts after the last NY divider (current session). Object limits can also trim the oldest drawings.")
+i_showTbl  = input.bool(true,   "Show info table (top right)", group = "5 - General", tooltip = "Top-right table with live HTF/LTF candle volume, buy/sell/delta and the HTF/LTF/range countdowns.")
 
 //------------ helpers ------------
 // Standard helpers
@@ -829,6 +830,7 @@ else
 // candles align exactly with the HTF candle boundaries. Drawn as a compact
 // cluster right of the HTF candles (current + previous i_ltprev).
 bktMinL = int(i_ltf)
+bktSecL = bktMinL * 60000
 bStartMinL = int((((nMM - aMin) + 1440) % 1440) / bktMinL) * bktMinL + aMin
 if bStartMinL > nMM
     bStartMinL -= 1440
@@ -839,7 +841,12 @@ var float lFO  = na
 var float lFH  = na
 var float lFL  = na
 var float lFC  = na
+var float lFB  = na
+var float lFS  = na
+var float lFDx = na
+var float lFDn = na
 var array<float> lC  = array.new_float()
+var array<float> lVol = array.new_float()
 var array<int>   lCB = array.new_int()
 var array<box>   lBoxes = array.new_box()
 var array<line>  lWicks = array.new_line()
@@ -853,18 +860,30 @@ if na(lFId)
     lFH  := high
     lFL  := low
     lFC  := close
+    lFB  := bBuy
+    lFS  := bSell
+    lFDx := bDelta
+    lFDn := bDelta
 else if bktL != lFId
     array.push(lC, lFO)
     array.push(lC, lFH)
     array.push(lC, lFL)
     array.push(lC, lFC)
     array.push(lCB, lFId)
+    array.push(lVol, lFB)
+    array.push(lVol, lFS)
+    array.push(lVol, lFDx)
+    array.push(lVol, lFDn)
     while array.size(lCB) > i_ltprev
         array.remove(lCB, 0)
         array.remove(lC, 0)
         array.remove(lC, 0)
         array.remove(lC, 0)
         array.remove(lC, 0)
+        array.remove(lVol, 0)
+        array.remove(lVol, 0)
+        array.remove(lVol, 0)
+        array.remove(lVol, 0)
     if i_panel and i_lpanel and i_ltprev >= 1
         nL2 = array.size(lCB)
         if nL2 > 0
@@ -893,10 +912,45 @@ else if bktL != lFId
     lFH  := high
     lFL  := low
     lFC  := close
+    lFB  := bBuy
+    lFS  := bSell
+    lFDx := bDelta
+    lFDn := bDelta
 else
     lFH := math.max(lFH, high)
     lFL := math.min(lFL, low)
     lFC := close
+    lFB := lFB + bBuy
+    lFS := lFS + bSell
+    lFDx := math.max(lFDx, bDelta)
+    lFDn := math.min(lFDn, bDelta)
+
+// shared countdown values (used by the panel label and the info table)
+nyMin = hour(timenow, "America/New_York") * 60 + minute(timenow, "America/New_York")
+nySec = hour(timenow, "America/New_York") * 3600 + minute(timenow, "America/New_York") * 60 + second(timenow, "America/New_York")
+r1S = rh1 * 60 + rm1
+r2S = rh2 * 60 + rm2
+r3S = rh3 * 60 + rm3
+ns1 = r1S > nyMin ? r1S : r1S + 1440
+ns2 = r2S > nyMin ? r2S : r2S + 1440
+ns3 = r3S > nyMin ? r3S : r3S + 1440
+nextS = math.min(ns1, math.min(ns2, ns3))
+nextN = nextS == ns1 ? "R1" : nextS == ns2 ? "R2" : "R3"
+curN = ""
+curE = 0
+if nyMin >= r1S and nyMin < r1S + i_r1m
+    curN := "R1"
+    curE := r1S + i_r1m
+else if nyMin >= r2S and nyMin < r2S + i_r2m
+    curN := "R2"
+    curE := r2S + i_r2m
+else if nyMin >= r3S and nyMin < r3S + i_r3m
+    curN := "R3"
+    curE := r3S + i_r3m
+remHtf  = (pBktId + bktSec - timenow) / 1000
+remLtf  = (lFId + bktSecL - timenow) / 1000
+remNext = nextS * 60 - nySec
+remClose = curE * 60 - nySec
 
 if i_panel
     nC = array.size(pCB)
@@ -956,31 +1010,8 @@ if i_panel
         label.set_textcolor(fDltLbl, dclr0)
         label.set_style(fDltLbl, ds0)
 
-    // forming countdown label
-    nyMin = hour(timenow, "America/New_York") * 60 + minute(timenow, "America/New_York")
-    nySec = hour(timenow, "America/New_York") * 3600 + minute(timenow, "America/New_York") * 60 + second(timenow, "America/New_York")
-    r1S = rh1 * 60 + rm1
-    r2S = rh2 * 60 + rm2
-    r3S = rh3 * 60 + rm3
-    ns1 = r1S > nyMin ? r1S : r1S + 1440
-    ns2 = r2S > nyMin ? r2S : r2S + 1440
-    ns3 = r3S > nyMin ? r3S : r3S + 1440
-    nextS = math.min(ns1, math.min(ns2, ns3))
-    nextN = nextS == ns1 ? "R1" : nextS == ns2 ? "R2" : "R3"
-    curN = ""
-    curE = 0
-    if nyMin >= r1S and nyMin < r1S + i_r1m
-        curN := "R1"
-        curE := r1S + i_r1m
-    else if nyMin >= r2S and nyMin < r2S + i_r2m
-        curN := "R2"
-        curE := r2S + i_r2m
-    else if nyMin >= r3S and nyMin < r3S + i_r3m
-        curN := "R3"
-        curE := r3S + i_r3m
-    remHtf  = (pBktId + bktSec - timenow) / 1000
-    remNext = nextS * 60 - nySec
-    remClose = curE * 60 - nySec
+    // forming countdown label (countdown values computed at global scope,
+    // shared with the top-right info table)
     txt = str.tostring(i_ptf) + "m close: " + f_cnt(remHtf)
     txt += "\n" + nextN + " start: " + f_cnt(remNext)
     if curN != ""
@@ -1171,3 +1202,64 @@ else
         box.delete(array.shift(lBoxes))
     while array.size(lWicks) > 0
         line.delete(array.shift(lWicks))
+
+//===== Top-right info table: live HTF/LTF volume + countdowns =====
+var table tb = na
+if i_showTbl
+    if na(tb)
+        tb := table.new(position.top_right, 2, 17, bgcolor = color.new(color.black, 55), border_width = 1, border_color = color.new(#2962FF, 10), frame_width = 1, frame_color = color.new(#2962FF, 10))
+    htv = pBktB + pBktS
+    htd = pBktB - pBktS
+    ltv = lFB + lFS
+    ltd = lFB - lFS
+    hplus = htd >= 0 ? "+" : ""
+    lplus = ltd >= 0 ? "+" : ""
+    hdCol = htd >= 0 ? color.lime : color.red
+    ldCol = ltd >= 0 ? color.lime : color.red
+    hxCol = pBktDx >= 0 ? color.lime : color.red
+    lxCol = lFDx >= 0 ? color.lime : color.red
+    // HTF section
+    table.cell(tb, 0, 0, "HTF " + str.tostring(i_ptf) + "m", text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+    table.cell(tb, 1, 0, "live", text_color = color.silver, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+    table.cell(tb, 0, 1, "Volume", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 1, f_cvol(htv), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 2, "Buy", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 2, f_cvol(pBktB), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 3, "Sell", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 3, f_cvol(pBktS), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 4, "Delta", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 4, hplus + f_cvol(htd), text_color = hdCol, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 5, "Hi / Lo", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 5, (pBktDx >= 0 ? "+" : "") + f_cvol(pBktDx) + " / " + (pBktDn >= 0 ? "+" : "") + f_cvol(pBktDn), text_color = hxCol, bgcolor = color.new(color.black, 60), text_size = size.small)
+    // LTF section
+    table.cell(tb, 0, 6, "LTF " + str.tostring(i_ltf) + "m", text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+    table.cell(tb, 1, 6, "live", text_color = color.silver, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+    table.cell(tb, 0, 7, "Volume", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 7, f_cvol(ltv), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 8, "Buy", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 8, f_cvol(lFB), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 9, "Sell", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 9, f_cvol(lFS), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 10, "Delta", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 10, lplus + f_cvol(ltd), text_color = ldCol, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 11, "Hi / Lo", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 11, (lFDx >= 0 ? "+" : "") + f_cvol(lFDx) + " / " + (lFDn >= 0 ? "+" : "") + f_cvol(lFDn), text_color = lxCol, bgcolor = color.new(color.black, 60), text_size = size.small)
+    // Countdown section
+    table.cell(tb, 0, 12, "Countdown", text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+    table.cell(tb, 1, 12, "", text_color = color.silver, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+    table.cell(tb, 0, 13, str.tostring(i_ptf) + "m close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 13, f_cnt(remHtf), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 14, str.tostring(i_ltf) + "m close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 14, f_cnt(remLtf), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 0, 15, nextN + " start", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 15, f_cnt(remNext), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    if curN != ""
+        table.cell(tb, 0, 16, curN + " close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, 1, 16, f_cnt(remClose), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+    else
+        table.cell(tb, 0, 16, "Range close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, 1, 16, "--:--:--", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+else
+    if not na(tb)
+        table.delete(tb)
+        tb := na
