@@ -85,6 +85,8 @@ i_lpanel  = input.bool(true,    "Show LTF candle overlay", group = "4 - HTF Cand
 i_ltf     = input.int(15,       "Lower timeframe (minutes)", minval = 1, maxval = 1440, group = "4 - HTF Candles")
 i_ltprev  = input.int(2,        "Previous LTF candles shown", minval = 0, maxval = 10, group = "4 - HTF Candles")
 i_ltgap   = input.int(1,        "Gap from HTF to LTF candles (slots)", minval = 0, maxval = 20, group = "4 - HTF Candles", tooltip = "Empty candle-width slots between the HTF section and the LTF section.")
+i_vph     = input.bool(true,    "Show candle-1 VP histogram", group = "4 - HTF Candles", tooltip = "Volume profile of candle[1] (the last closed HTF candle), drawn immediately right of it. POC / VAH / VAL bins are highlighted.")
+i_vphw    = input.int(20,       "VP histogram width (minutes)", minval = 2, maxval = 120, group = "4 - HTF Candles", tooltip = "Width of the candle-1 volume-profile band in floor-time minutes on the x-axis.")
 i_pup     = input.color(color.lime, "Up candles", group = "4 - HTF Candles", inline = "htfColors")
 i_pdn     = input.color(color.red, "Down candles", group = "4 - HTF Candles", inline = "htfColors")
 i_pfill   = input.int(30,       "Body fill transparency (%)", minval = 0, maxval = 90, group = "4 - HTF Candles")
@@ -300,6 +302,64 @@ f_sessionPrices(S, maxDays = 4) =>
                 pPoc := ssLo + (sPoc2 + 0.5) * sStep2
         wDays += 1
     [pVal, pVah, pPoc]
+
+// Volume bins over the historical window [tA, tB) (used for the candle-1
+// histogram inside the HTF overlay). Fully closed window, so the profile is
+// static until the candle-1 identity changes.
+// Returns [volsPerBin, lo, step, vmax, pocBin, vaHiBin, vaLoBin].
+f_candleProfile(tA, tB, levels) =>
+    float cHi = na
+    float cLo = na
+    int qt = 1
+    while qt <= 3000 and not na(time[qt]) and time[qt] >= tA
+        if time[qt] < tB
+            cHi := na(cHi) ? high[qt] : math.max(cHi, high[qt])
+            cLo := na(cLo) ? low[qt] : math.min(cLo, low[qt])
+        qt += 1
+    array<float> cVols = array.new_float(levels, 0.0)
+    float cStep = na
+    if not na(cHi) and not na(cLo) and cHi > cLo
+        cStep := (cHi - cLo) / levels
+        int qt2 = 1
+        while qt2 <= 3000 and not na(time[qt2]) and time[qt2] >= tA
+            if time[qt2] < tB
+                f_addVolume(cVols, cLo, cStep, high[qt2], low[qt2], volume[qt2])
+            qt2 += 1
+    float cVmax = f_arrMax(cVols)
+    int cPoc = -1
+    if not na(cVmax) and cVmax > 0
+        int p0 = 0
+        for q0 = 1 to levels - 1
+            if array.get(cVols, q0) > array.get(cVols, p0)
+                p0 := q0
+        cPoc := p0
+    int cVaHi = -1
+    int cVaLo = -1
+    if cPoc >= 0
+        cTotal = 0.0
+        for q0 = 0 to levels - 1
+            cTotal += array.get(cVols, q0)
+        cVaHi := cPoc
+        cVaLo := cPoc
+        if cTotal > 0
+            cArea = array.get(cVols, cPoc)
+            cTar = math.min(1.0, i_vapct / 100.0) * cTotal
+            while cArea < cTar and (cVaLo > 0 or cVaHi < levels - 1)
+                cAbove = cVaHi < levels - 1 ? array.get(cVols, cVaHi + 1) : -1.0
+                cBelow = cVaLo > 0            ? array.get(cVols, cVaLo - 1) : -1.0
+                if cAbove < 0
+                    cVaLo -= 1
+                    cArea += array.get(cVols, cVaLo)
+                else if cBelow < 0
+                    cVaHi += 1
+                    cArea += array.get(cVols, cVaHi)
+                else if cAbove >= cBelow
+                    cVaHi += 1
+                    cArea += array.get(cVols, cVaHi)
+                else
+                    cVaLo -= 1
+                    cArea += array.get(cVols, cVaLo)
+    [cVols, cLo, cStep, cVmax, cPoc, cVaHi, cVaLo]
 
 // Draw one session's POC/VAH/VAL dotted lines + labels across [S, S+24h).
 f_drawLevelLines(S, vv, ah, pp) =>
@@ -872,6 +932,8 @@ else
 // Same NY-anchored minute grid as HTF, but stepped by i_ltf minutes, so LTF
 // candles align exactly with the HTF candle boundaries. Drawn as a compact
 // cluster right of the HTF candles (current + previous i_ltprev).
+// Horizontal shift reserved for the candle-1 VP histogram band (in ms).
+vpOff = i_vph ? i_vphw * 60000 : 0
 bktMinL = int(i_ltf)
 bktSecL = bktMinL * 60000
 bStartMinL = int((((nMM - aMin) + 1440) % 1440) / bktMinL) * bktMinL + aMin
@@ -896,6 +958,17 @@ var array<line>  lWicks = array.new_line()
 var box   lfBox    = na
 var line  lfWickUp = na
 var line  lfWickDn = na
+
+// candle-1 volume-profile persistent objects (rebuilt on candle change, moved each bar)
+var int         vpCandle = na
+var array<box>  vpBoxes  = array.new_box()
+var array<int>  vpW      = array.new_int()
+var label       vpLpoc   = na
+var label       vpLvah   = na
+var label       vpLval   = na
+var int         vpWpoc   = 0
+var int         vpWvah   = 0
+var int         vpWval   = 0
 
 if na(lFId)
     lFId := bktL
@@ -939,7 +1012,7 @@ else if bktL != lFId
             lstep = lsw + lgap
             ltMs = timeframe.in_seconds() * 1000
             lk2 = i_pprev + 1 + i_ltgap + i_ltprev - 1
-            lx2 = time + (i_htgap + lk2 * lstep) * ltMs
+            lx2 = time + vpOff + (i_htgap + lk2 * lstep) * ltMs
             rx2 = lx2 + lsw * ltMs
             wx2 = lx2 + int(lsw / 2) * ltMs
             lu2 = lC2 >= lO2
@@ -1005,7 +1078,9 @@ if i_panel
     baseL = i_pprev + 1 + i_ltgap
 
     // --- forming candle (j=0): always update in-place ---
-    lx0 = time + (lead + i_pprev * stepW) * tMs
+    // Placed right of the candle-1 VP band so the histogram fans out to the right.
+    c1R = time + (lead + (i_pprev - 1) * stepW) * tMs + slotW * tMs
+    lx0 = c1R + vpOff + 2 * tMs
     rx0 = lx0 + slotW * tMs
     wx0 = lx0 + int(slotW / 2) * tMs
     up0 = pBktC >= pBktO
@@ -1081,10 +1156,87 @@ if i_panel
                     line.set_xy2(array.get(pWicks, wd), wx, l)
                     line.set_color(array.get(pWicks, wd), wclr)
 
+    // --- candle-1 volume profile: rebuild when candle[1] changes, move every bar ---
+    c1Id = nC > 0 ? array.get(pCB, nC - 1) : na
+    if i_vph and not na(c1Id)
+        if na(vpCandle) or vpCandle != c1Id
+            while array.size(vpBoxes) > 0
+                box.delete(array.shift(vpBoxes))
+            array.clear(vpW)
+            if not na(vpLpoc)
+                label.delete(vpLpoc)
+                vpLpoc := na
+            if not na(vpLvah)
+                label.delete(vpLvah)
+                vpLvah := na
+            if not na(vpLval)
+                label.delete(vpLval)
+                vpLval := na
+            vpWpoc := 0
+            vpWvah := 0
+            vpWval := 0
+            vpCandle := c1Id
+            lvlsP = math.max(2, i_vplvls)
+            [vVols, vLo, vStp, vMx, vPoc, vVaHi, vVaLo] = f_candleProfile(c1Id, c1Id + bktSec, lvlsP)
+            if vPoc >= 0 and not na(vLo) and not na(vStp) and vStp > 0 and not na(vMx) and vMx > 0
+                bwP = i_vphw * 60000
+                for q = 0 to lvlsP - 1
+                    vqP = array.get(vVols, q)
+                    if vqP > 0
+                        wqP = int(math.max(1, math.round(bwP * vqP / vMx)))
+                        bloP = vLo + q * vStp
+                        bhiP = vLo + (q + 1) * vStp
+                        bclrP = q == vPoc
+                             ? color.new(i_ppoc, 25)
+                             : q == vVaLo
+                             ? color.new(i_pval, 25)
+                             : q == vVaHi
+                             ? color.new(i_pvah, 25)
+                             : (q >= vVaLo and q <= vVaHi) ? color.new(i_vac, 45) : color.new(color.gray, 35)
+                        array.push(vpBoxes, box.new(0, bhiP, 0, bloP, xloc = xloc.bar_time, border_color = bclrP, bgcolor = bclrP, border_width = 1))
+                        array.push(vpW, wqP)
+                        if q == vPoc
+                            vpLpoc := label.new(int(bwP / 2), (bloP + bhiP) / 2 - vStp * 0.3, "POC", xloc = xloc.bar_time, color = na,
+                                 textcolor = i_ppoc, style = label.style_none, size = size.small)
+                            vpWpoc := wqP
+                        if q == vVaLo and vVaLo != vPoc
+                            vpLval := label.new(int(bwP / 2), (bloP + bhiP) / 2 - vStp * 0.3, "VAL", xloc = xloc.bar_time, color = na,
+                                 textcolor = i_pval, style = label.style_none, size = size.small)
+                            vpWval := wqP
+                        if q == vVaHi and vVaHi != vPoc
+                            vpLvah := label.new(int(bwP / 2), (bloP + bhiP) / 2 - vStp * 0.3, "VAH", xloc = xloc.bar_time, color = na,
+                                 textcolor = i_pvah, style = label.style_none, size = size.small)
+                            vpWvah := wqP
+        if array.size(vpBoxes) > 0
+            HL = time + (lead + (i_pprev - 1) * stepW) * tMs + slotW * tMs + tMs
+            for bI = 0 to array.size(vpBoxes) - 1
+                box.set_left(array.get(vpBoxes, bI), HL)
+                box.set_right(array.get(vpBoxes, bI), HL + array.get(vpW, bI))
+            if vpWpoc > 0
+                label.set_x(vpLpoc, int(HL + vpWpoc / 2))
+            if vpWval > 0
+                label.set_x(vpLval, int(HL + vpWval / 2))
+            if vpWvah > 0
+                label.set_x(vpLvah, int(HL + vpWvah / 2))
+    else
+        while array.size(vpBoxes) > 0
+            box.delete(array.shift(vpBoxes))
+        array.clear(vpW)
+        if not na(vpLpoc)
+            label.delete(vpLpoc)
+            vpLpoc := na
+        if not na(vpLvah)
+            label.delete(vpLvah)
+            vpLvah := na
+        if not na(vpLval)
+            label.delete(vpLval)
+            vpLval := na
+        vpCandle := na
+
     // --- LTF cluster (persistent objects, repositioned every bar) ---
     if i_lpanel
         // forming / current LTF candle (rightmost of the LTF cluster)
-        lxL0 = time + (lead + (baseL + i_ltprev) * stepW) * tMs
+        lxL0 = time + vpOff + (lead + (baseL + i_ltprev) * stepW) * tMs
         rxL0 = lxL0 + slotW * tMs
         wxL0 = lxL0 + int(slotW / 2) * tMs
         lup0 = lFC >= lFO
@@ -1124,7 +1276,7 @@ if i_panel
                 lL = array.get(lC, bL + 2)
                 cL = array.get(lC, bL + 3)
                 lk3 = baseL + i_ltprev - jL
-                lxL = time + (lead + lk3 * stepW) * tMs
+                lxL = time + vpOff + (lead + lk3 * stepW) * tMs
                 rxL = lxL + slotW * tMs
                 wxL = lxL + int(slotW / 2) * tMs
                 lupC = cL >= oL
@@ -1191,6 +1343,19 @@ else
         box.delete(array.shift(lBoxes))
     while array.size(lWicks) > 0
         line.delete(array.shift(lWicks))
+    while array.size(vpBoxes) > 0
+        box.delete(array.shift(vpBoxes))
+    array.clear(vpW)
+    if not na(vpLpoc)
+        label.delete(vpLpoc)
+        vpLpoc := na
+    if not na(vpLvah)
+        label.delete(vpLvah)
+        vpLvah := na
+    if not na(vpLval)
+        label.delete(vpLval)
+        vpLval := na
+    vpCandle := na
 
 //===== Info display: volume grid top-right, countdown table bottom-right =====
 // Two tables anchored at different corners (the layout Pine supports without any
