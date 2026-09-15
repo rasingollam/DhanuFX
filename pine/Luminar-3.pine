@@ -80,7 +80,7 @@ i_panel   = input.bool(true,    "Show HTF candle overlay", group = "4 - HTF Cand
 i_ptf     = input.int(90,       "Candle timeframe (minutes)", minval = 1, maxval = 1440, group = "4 - HTF Candles")
 i_htfAnchor = input.string("01:30", "Candle open time (NY, HH:mm)", group = "4 - HTF Candles", tooltip = "Anchors the i_ptf-minute candle grid so one candle opens exactly at this NY time. Default 01:30 = the 01:30->03:00 candle whose open you were comparing.")
 i_pprev   = input.int(2,        "Previous candles shown", minval = 0, maxval = 20, group = "4 - HTF Candles")
-i_lpanel  = input.bool(true,    "Show LTF candle overlay", group = "4 - HTF Candles", tooltip = "Plots a compact lower-timeframe candle cluster (current + N previous) immediately left of the HTF candles, giving intra-candle context.")
+i_lpanel  = input.bool(true,    "Show LTF candle overlay", group = "4 - HTF Candles", tooltip = "Plots a compact lower-timeframe candle cluster (current + N previous) immediately right of the HTF candles, giving intra-candle context.")
 i_ltf     = input.int(15,       "Lower timeframe (minutes)", minval = 1, maxval = 1440, group = "4 - HTF Candles")
 i_ltprev  = input.int(2,        "Previous LTF candles shown", minval = 0, maxval = 10, group = "4 - HTF Candles")
 i_ltgap   = input.int(2,        "Gap to HTF candles (slots)", minval = 0, maxval = 10, group = "4 - HTF Candles")
@@ -781,7 +781,7 @@ else if bkt != pBktId
             bs2 = array.get(pV, (nC2 - 1) * 4 + 1)
             dx2 = array.get(pV, (nC2 - 1) * 4 + 2)
             dn2 = array.get(pV, (nC2 - 1) * 4 + 3)
-            lx2 = time + (ld + (i_ltprev + i_ltgap + i_pprev - 1) * st) * tMs
+            lx2 = time + (ld + (i_pprev - 1) * st) * tMs
             rx2 = lx2 + sw * tMs
             wx2 = lx2 + int(sw / 2) * tMs
             up2 = c2 >= o2
@@ -827,7 +827,7 @@ else
 //===== LTF (lower timeframe) candle overlay =====
 // Same NY-anchored minute grid as HTF, but stepped by i_ltf minutes, so LTF
 // candles align exactly with the HTF candle boundaries. Drawn as a compact
-// cluster left of the HTF candles (current + previous i_ltprev).
+// cluster right of the HTF candles (current + previous i_ltprev).
 bktMinL = int(i_ltf)
 bStartMinL = int((((nMM - aMin) + 1440) % 1440) / bktMinL) * bktMinL + aMin
 if bStartMinL > nMM
@@ -876,7 +876,7 @@ else if bktL != lFId
             lgap = 3
             lstep = lsw + lgap
             ltMs = timeframe.in_seconds() * 1000
-            lk2 = i_ltprev - 1
+            lk2 = i_pprev + 1 + i_ltgap + i_ltprev - 1
             lx2 = time + (10 + lk2 * lstep) * ltMs
             rx2 = lx2 + lsw * ltMs
             wx2 = lx2 + int(lsw / 2) * ltMs
@@ -905,10 +905,10 @@ if i_panel
     gapW = 3
     stepW = slotW + gapW
     tMs = timeframe.in_seconds() * 1000
-    kOff = i_ltprev + i_ltgap
+    baseL = i_pprev + 1 + i_ltgap
 
     // --- forming candle (j=0): always update in-place ---
-    lx0 = time + (lead + (kOff + i_pprev) * stepW) * tMs
+    lx0 = time + (lead + i_pprev * stepW) * tMs
     rx0 = lx0 + slotW * tMs
     wx0 = lx0 + int(slotW / 2) * tMs
     up0 = pBktC >= pBktO
@@ -985,7 +985,7 @@ if i_panel
     txt += "\n" + nextN + " start: " + f_cnt(remNext)
     if curN != ""
         txt += "\n" + curN + " close: " + f_cnt(remClose)
-    fx = time + (lead + (kOff + i_pprev) * stepW + slotW + 2) * tMs
+    fx = time + (lead + (baseL + i_ltprev) * stepW + slotW + 2) * tMs
     if na(fCntLbl)
         fCntLbl := label.new(fx, close, txt, xloc = xloc.bar_time, color = color.new(color.black, 0), textcolor = color.white, style = label.style_label_left, size = size.small)
     else
@@ -1011,7 +1011,7 @@ if i_panel
             bs = array.get(pV, base + 1)
             dx = array.get(pV, base + 2)
             dn = array.get(pV, base + 3)
-            lx = time + (lead + (kOff + i_pprev - j) * stepW) * tMs
+            lx = time + (lead + (i_pprev - j) * stepW) * tMs
             rx = lx + slotW * tMs
             wx = lx + int(slotW / 2) * tMs
             up = c >= o
@@ -1056,7 +1056,7 @@ if i_panel
     // --- LTF cluster (persistent objects, repositioned every bar) ---
     if i_lpanel
         // forming / current LTF candle (rightmost of the LTF cluster)
-        lxL0 = time + (lead + i_ltprev * stepW) * tMs
+        lxL0 = time + (lead + (baseL + i_ltprev) * stepW) * tMs
         rxL0 = lxL0 + slotW * tMs
         wxL0 = lxL0 + int(slotW / 2) * tMs
         lup0 = lFC >= lFO
@@ -1095,7 +1095,7 @@ if i_panel
                 hL = array.get(lC, bL + 1)
                 lL = array.get(lC, bL + 2)
                 cL = array.get(lC, bL + 3)
-                lk3 = i_ltprev - jL
+                lk3 = baseL + i_ltprev - jL
                 lxL = time + (lead + lk3 * stepW) * tMs
                 rxL = lxL + slotW * tMs
                 wxL = lxL + int(slotW / 2) * tMs
