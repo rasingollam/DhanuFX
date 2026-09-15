@@ -1134,36 +1134,51 @@ else
     while array.size(lWicks) > 0
         line.delete(array.shift(lWicks))
 
-//===== Top-right info table: all HTF/LTF candle volume + countdowns =====
-// One value-column per visible candle (0 = current/forming, 1.. = previous),
-// countdown rows below (key | value).
+//===== Top-right info table: countdown block left, all HTF/LTF candle volume right =====
+// Countdown on the left columns (key | value rows), volume grid beside it on the same
+// line; one value-column per visible candle (0 = current/forming, 1.. = previous).
 htfCols = i_pprev + 1
 ltfCols = i_ltprev + 1
-totCols = 1 + htfCols + ltfCols
+volLbl = 2
+totCols = volLbl + 1 + htfCols + ltfCols
 var table tb = na
 if i_showTbl
     if na(tb)
-        tb := table.new(position.top_right, totCols, 11, bgcolor = color.new(color.black, 55), border_width = 1, border_color = color.new(#2962FF, 10), frame_width = 1, frame_color = color.new(#2962FF, 10))
-        for cr = 6 to 10
-            table.merge_cells(tb, 1, cr, totCols - 1, cr)
+        tb := table.new(position.top_right, totCols, 6, bgcolor = color.new(color.black, 55), border_width = 1, border_color = color.new(#2962FF, 10), frame_width = 1, frame_color = color.new(#2962FF, 10))
+        table.merge_cells(tb, 0, 0, 1, 0)
+        table.merge_cells(tb, 0, 5, 1, 5)
     thN = array.size(pCB)
     tlN = array.size(lCB)
-    // header bar - all columns share the same bar
+    // countdown block on the left - key | value on the same lines as the volume grid
+    table.cell(tb, 0, 0, "Countdown", text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+    table.cell(tb, 0, 1, str.tostring(i_ptf) + "m close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 1, f_cnt(remHtf), text_color = color.white, bgcolor = color.new(#2962FF, 35), text_size = size.small)
+    table.cell(tb, 0, 2, str.tostring(i_ltf) + "m close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 2, f_cnt(remLtf), text_color = color.white, bgcolor = color.new(#2962FF, 35), text_size = size.small)
+    table.cell(tb, 0, 3, nextN + " start", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, 1, 3, f_cnt(remNext), text_color = color.white, bgcolor = color.new(#2962FF, 35), text_size = size.small)
+    if curN != ""
+        table.cell(tb, 0, 4, curN + " close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, 1, 4, f_cnt(remClose), text_color = color.white, bgcolor = color.new(#2962FF, 35), text_size = size.small)
+    else
+        table.cell(tb, 0, 4, "Range close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, 1, 4, "--:--:--", text_color = color.silver, bgcolor = color.new(#2962FF, 35), text_size = size.small)
+    // volume grid header bar - all columns share the same bar
     hBase = str.tostring(i_ptf) + "m"
     lBase = str.tostring(i_ltf) + "m"
-    table.cell(tb, 0, 0, "Live", text_color = color.silver, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+    table.cell(tb, volLbl, 0, "Live", text_color = color.silver, bgcolor = color.new(#2962FF, 40), text_size = size.small)
     for c = 0 to htfCols - 1
         hLab = c == 0 ? hBase : hBase + "-" + str.tostring(c)
-        table.cell(tb, 1 + c, 0, hLab, text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+        table.cell(tb, volLbl + 1 + c, 0, hLab, text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
     for c = 0 to ltfCols - 1
         lLab = c == 0 ? lBase : lBase + "-" + str.tostring(c)
-        table.cell(tb, 1 + htfCols + c, 0, lLab, text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
+        table.cell(tb, volLbl + 1 + htfCols + c, 0, lLab, text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
     // metric row labels
-    table.cell(tb, 0, 1, "Volume", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 0, 2, "Buy", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 0, 3, "Sell", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 0, 4, "Delta", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 0, 5, "Hi/Lo", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, volLbl, 1, "Volume", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, volLbl, 2, "Buy", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, volLbl, 3, "Sell", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, volLbl, 4, "Delta", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
+    table.cell(tb, volLbl, 5, "Hi/Lo", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
     // HTF columns (0 = current/forming, c>0 = previous closed)
     for c = 0 to htfCols - 1
         float hb = na
@@ -1186,11 +1201,11 @@ if i_showTbl
         ddH = na(hb) ? na : hb - hs
         hCol = na(ddH) ? color.silver : ddH >= 0 ? color.lime : color.red
         hxCol = na(hx) ? color.silver : hx >= 0 ? color.lime : color.red
-        table.cell(tb, 1 + c, 1, na(hb) ? "-" : f_cvol(hb + hs), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tb, 1 + c, 2, na(hb) ? "-" : f_cvol(hb), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tb, 1 + c, 3, na(hb) ? "-" : f_cvol(hs), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tb, 1 + c, 4, na(ddH) ? "-" : (ddH >= 0 ? "+" : "") + f_cvol(ddH), text_color = hCol, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tb, 1 + c, 5, na(hx) ? "-" : (hx >= 0 ? "+" : "") + f_cvol(hx) + " / " + (hn >= 0 ? "+" : "") + f_cvol(hn), text_color = hxCol, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, volLbl + 1 + c, 1, na(hb) ? "-" : f_cvol(hb + hs), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, volLbl + 1 + c, 2, na(hb) ? "-" : f_cvol(hb), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, volLbl + 1 + c, 3, na(hb) ? "-" : f_cvol(hs), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, volLbl + 1 + c, 4, na(ddH) ? "-" : (ddH >= 0 ? "+" : "") + f_cvol(ddH), text_color = hCol, bgcolor = color.new(color.black, 60), text_size = size.small)
+        table.cell(tb, volLbl + 1 + c, 5, na(hx) ? "-" : (hx >= 0 ? "+" : "") + f_cvol(hx) + " / " + (hn >= 0 ? "+" : "") + f_cvol(hn), text_color = hxCol, bgcolor = color.new(color.black, 60), text_size = size.small)
     // LTF columns
     for c = 0 to ltfCols - 1
         float lb = na
@@ -1213,26 +1228,12 @@ if i_showTbl
         ddL = na(lb) ? na : lb - ls
         lCol = na(ddL) ? color.silver : ddL >= 0 ? color.lime : color.red
         lxCol = na(lx) ? color.silver : lx >= 0 ? color.lime : color.red
-        cc = 1 + htfCols + c
+        cc = volLbl + 1 + htfCols + c
         table.cell(tb, cc, 1, na(lb) ? "-" : f_cvol(lb + ls), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
         table.cell(tb, cc, 2, na(lb) ? "-" : f_cvol(lb), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
         table.cell(tb, cc, 3, na(lb) ? "-" : f_cvol(ls), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
         table.cell(tb, cc, 4, na(ddL) ? "-" : (ddL >= 0 ? "+" : "") + f_cvol(ddL), text_color = lCol, bgcolor = color.new(color.black, 60), text_size = size.small)
         table.cell(tb, cc, 5, na(lx) ? "-" : (lx >= 0 ? "+" : "") + f_cvol(lx) + " / " + (ln >= 0 ? "+" : "") + f_cvol(ln), text_color = lxCol, bgcolor = color.new(color.black, 60), text_size = size.small)
-    // countdown section - key | value rows (merged across the columns)
-    table.cell(tb, 0, 6, "Countdown", text_color = color.white, bgcolor = color.new(#2962FF, 40), text_size = size.small)
-    table.cell(tb, 0, 7, str.tostring(i_ptf) + "m close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 1, 7, f_cnt(remHtf), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 0, 8, str.tostring(i_ltf) + "m close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 1, 8, f_cnt(remLtf), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 0, 9, nextN + " start", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-    table.cell(tb, 1, 9, f_cnt(remNext), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-    if curN != ""
-        table.cell(tb, 0, 10, curN + " close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tb, 1, 10, f_cnt(remClose), text_color = color.white, bgcolor = color.new(color.black, 60), text_size = size.small)
-    else
-        table.cell(tb, 0, 10, "Range close", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
-        table.cell(tb, 1, 10, "--:--:--", text_color = color.silver, bgcolor = color.new(color.black, 60), text_size = size.small)
 else
     if not na(tb)
         table.delete(tb)
