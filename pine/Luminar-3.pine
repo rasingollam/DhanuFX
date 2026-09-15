@@ -15,12 +15,12 @@ indicator("Luminar-3", overlay=true,
 //===== Inputs =====
 //--- Theme & Text ---
 i_theme   = input.string("Auto", "Chart theme", options = ["Auto", "Dark", "Light"], group = "Theme & Text", tooltip = "Auto reads the chart background and adapts the chart-level colors. Dark/Light force a theme. Fixed colors and the Candle-1 VP / Info Display inputs are always respected.")
-i_txDark  = input.color(color.white, "Default text (dark theme)", group = "Theme & Text", tooltip = "Main text/lines when the dark theme is active: range midlines, volume/VA labels, value-area fills.")
-i_txLite  = input.color(#111318,     "Default text (light theme)", group = "Theme & Text", tooltip = "Same default elements when the light theme is active.")
-i_dimDark = input.color(color.gray,  "Dim (dark theme)", group = "Theme & Text", tooltip = "Secondary elements on dark: blend-in midlines and histogram bins.")
-i_dimLite = input.color(#6B7280,     "Dim (light theme)", group = "Theme & Text", tooltip = "Secondary elements on light.")
-i_ctrDark = input.color(color.white, "Text on dark fills", group = "Theme & Text", tooltip = "On-fill labels (POC/VAH/VAL) when the bin color is dark.")
-i_ctrLite = input.color(#111318,     "Text on bright fills", group = "Theme & Text", tooltip = "On-fill labels (POC/VAH/VAL) when the bin color is bright.")
+i_txDark  = input.color(#E6EDF7, "Default text (dark theme)", group = "Theme & Text", tooltip = "Main text/lines when the dark theme is active: range midlines, volume/VA labels, value-area fills.")
+i_txLite  = input.color(#151A21,     "Default text (light theme)", group = "Theme & Text", tooltip = "Same default elements when the light theme is active.")
+i_dimDark = input.color(#64748B,  "Dim (dark theme)", group = "Theme & Text", tooltip = "Secondary elements on dark: blend-in midlines and histogram bins.")
+i_dimLite = input.color(#8A94A6,     "Dim (light theme)", group = "Theme & Text", tooltip = "Secondary elements on light.")
+i_ctrDark = input.color(#F1F5F9, "Text on dark fills", group = "Theme & Text", tooltip = "On-fill labels (POC/VAH/VAL) when the bin color is dark.")
+i_ctrLite = input.color(#111827,     "Text on bright fills", group = "Theme & Text", tooltip = "On-fill labels (POC/VAH/VAL) when the bin color is bright.")
 
 //--- Ranges ---
 i_r1s  = input.string("09:00",  "R1 start (NY, HH:mm)", group = "Ranges")
@@ -50,12 +50,12 @@ i_hlS  = input.string("solid",  "High/low line style", options = ["solid", "dott
 i_midW = input.int(2,           "Midline thickness (px)", minval = 1, maxval = 10, group = "Ranges")
 i_midS = input.string("dotted", "Midline style", options = ["solid", "dotted", "dashed"], group = "Ranges")
 
-c_r1     = input.color(#1E90FF, "R1 color", group = "Ranges", inline = "rColors")
-c_r2     = input.color(#FFD700, "R2 color", group = "Ranges", inline = "rColors")
-c_r3     = input.color(#00FF00, "R3 color", group = "Ranges", inline = "rColors")
-c_inside = input.color(#A020F0, "Inside box color", group = "Ranges")
-c_mid1   = input.color(color.white, "Range midpoint color", group = "Ranges")
-c_mid2   = input.color(color.orange, "Inside midpoint color", group = "Ranges")
+c_r1     = input.color(#3B82F6, "R1 color", group = "Ranges", inline = "rColors")
+c_r2     = input.color(#DFA93F, "R2 color", group = "Ranges", inline = "rColors")
+c_r3     = input.color(#3FCB6E, "R3 color", group = "Ranges", inline = "rColors")
+c_inside = input.color(#8B5CF6, "Inside box color", group = "Ranges")
+c_mid1   = input.color(#E9EFF7, "Range midpoint color", group = "Ranges")
+c_mid2   = input.color(#F59E5B, "Inside midpoint color", group = "Ranges")
 
 //--- Volume & Delta ---
 i_showRPV = input.bool(true,  "Show range volume profile (PV)", group = "Volume & Delta", tooltip = "Per-range volume histogram with bin values and POC/VAH/VAL labels.")
@@ -68,11 +68,11 @@ i_vpgap   = input.int(10,     "Gap from range to histogram (minutes)", minval = 
 i_txtGap  = input.int(8,      "Bin text left offset (minutes)", minval = 0, maxval = 120, group = "Volume & Delta")
 i_txtCw   = input.float(1.4,  "Text spacing (minutes/digit)", minval = 0.1, maxval = 10, step = 0.1, group = "Volume & Delta")
 
-i_vptxt = input.color(color.white, "Volume text color", group = "Volume & Delta")
-i_vac   = input.color(color.white, "Value area / VAH / VAL labels", group = "Volume & Delta")
-i_pocc  = input.color(color.yellow, "POC / boundary bins", group = "Volume & Delta")
-c_dpos  = input.color(color.lime, "Positive delta color", group = "Volume & Delta", inline = "deltaColors")
-c_dneg  = input.color(color.red, "Negative delta color", group = "Volume & Delta", inline = "deltaColors")
+i_vptxt = input.color(#DCE7F5, "Volume text color", group = "Volume & Delta")
+i_vac   = input.color(#DCE7F5, "Value area / VAH / VAL labels", group = "Volume & Delta")
+i_pocc  = input.color(#F2B237, "POC / boundary bins", group = "Volume & Delta")
+c_dpos  = input.color(#22C55E, "Positive delta color", group = "Volume & Delta", inline = "deltaColors")
+c_dneg  = input.color(#F43F5E, "Negative delta color", group = "Volume & Delta", inline = "deltaColors")
 
 //--- Session ---
 i_divOn   = input.bool(true,    "Show daily divider line", group = "Session")
@@ -82,10 +82,10 @@ i_szLvl   = input.string("normal", "VAH/VAL/POC label size", options = ["tiny", 
 i_szW     = input.int(2,        "VAH/VAL/POC line thickness (px)", minval = 1, maxval = 10, group = "Session")
 i_szS     = input.string("dashed", "VAH/VAL/POC line style", options = ["solid", "dotted", "dashed"], group = "Session")
 
-c_div  = input.color(color.gray, "Divider color", group = "Session")
-i_pval = input.color(color.aqua, "VAL", group = "Session", inline = "sessColors")
-i_pvah = input.color(color.fuchsia, "VAH", group = "Session", inline = "sessColors")
-i_ppoc = input.color(#FF4500, "POC", group = "Session", inline = "sessColors")
+c_div  = input.color(#64748B, "Divider color", group = "Session")
+i_pval = input.color(#22D3EE, "VAL", group = "Session", inline = "sessColors")
+i_pvah = input.color(#C084FC, "VAH", group = "Session", inline = "sessColors")
+i_ppoc = input.color(#F97316, "POC", group = "Session", inline = "sessColors")
 
 //--- HTF & LTF Candles ---
 i_panel     = input.bool(true,    "Show HTF candle overlay", group = "HTF & LTF Candles", tooltip = "Draws the forming N-minute candle (90 by default) plus the last X closed ones directly on the chart at real prices, like a Power of Three HTF overlay.")
@@ -95,8 +95,8 @@ i_pprev     = input.int(2,        "Previous candles shown", minval = 0, maxval =
 i_htgap     = input.int(20,       "Gap from chart to HTF candles (bars)", minval = 1, maxval = 100, group = "HTF & LTF Candles", tooltip = "Horizontal distance from the current chart candle to the first HTF candle section, measured in chart-timeframe bars.")
 i_pfill     = input.int(30,       "Body fill transparency (%)", minval = 0, maxval = 90, group = "HTF & LTF Candles")
 
-i_pup = input.color(color.lime, "Up candles", group = "HTF & LTF Candles", inline = "htfColors")
-i_pdn = input.color(color.red, "Down candles", group = "HTF & LTF Candles", inline = "htfColors")
+i_pup = input.color(#22C55E, "Up candles", group = "HTF & LTF Candles", inline = "htfColors")
+i_pdn = input.color(#F43F5E, "Down candles", group = "HTF & LTF Candles", inline = "htfColors")
 
 i_lpanel  = input.bool(true,    "Show LTF candle overlay", group = "HTF & LTF Candles", tooltip = "Plots a compact lower-timeframe candle cluster (current + N previous) immediately right of the HTF candles, giving intra-candle context.")
 i_ltf     = input.int(15,       "Lower timeframe (minutes)", minval = 1, maxval = 1440, group = "HTF & LTF Candles")
@@ -106,18 +106,18 @@ i_ltgap   = input.int(1,        "Gap from HTF to LTF candles (slots)", minval = 
 //--- Candle-1 VP ---
 i_vph   = input.bool(true,    "Show candle-1 VP histogram", group = "Candle-1 VP", tooltip = "Volume profile of candle[1] (the last closed HTF candle), drawn immediately right of it. POC / VAH / VAL bins are highlighted.")
 i_vphw  = input.int(30,       "VP histogram width (minutes)", minval = 2, maxval = 120, group = "Candle-1 VP", tooltip = "Width of the candle-1 volume-profile band in floor-time minutes on the x-axis.")
-i_vpPoc = input.color(#FF4500, "POC color", group = "Candle-1 VP", tooltip = "POC bin fill and its label.")
-i_vpVal = input.color(color.aqua, "VAL color", group = "Candle-1 VP", tooltip = "Lower value-area edge bin fill and its label.")
-i_vpVah = input.color(color.fuchsia, "VAH color", group = "Candle-1 VP", tooltip = "Upper value-area edge bin fill and its label.")
-i_vpVa  = input.color(color.white, "Value-area fill", group = "Candle-1 VP", tooltip = "Fill of the bins inside the value area (VAH to VAL).")
-i_vpBin = input.color(color.gray, "Other bins", group = "Candle-1 VP", tooltip = "Fill of the bins outside the value area.")
+i_vpPoc = input.color(#F97316, "POC color", group = "Candle-1 VP", tooltip = "POC bin fill and its label.")
+i_vpVal = input.color(#22D3EE, "VAL color", group = "Candle-1 VP", tooltip = "Lower value-area edge bin fill and its label.")
+i_vpVah = input.color(#C084FC, "VAH color", group = "Candle-1 VP", tooltip = "Upper value-area edge bin fill and its label.")
+i_vpVa  = input.color(#D9E6F7, "Value-area fill", group = "Candle-1 VP", tooltip = "Fill of the bins inside the value area (VAH to VAL).")
+i_vpBin = input.color(#64748B, "Other bins", group = "Candle-1 VP", tooltip = "Fill of the bins outside the value area.")
 
 //--- Info Display ---
 i_showTbl = input.bool(true,   "Show info tables", group = "Info Display", tooltip = "Top-right table with live HTF/LTF candle volume, buy/sell/delta and the HTF/LTF/range countdowns.")
-i_tblBg   = input.color(color.black,  "Table background", group = "Info Display", tooltip = "Shared background of the VP data table (top-right) and the countdown table (bottom-right).")
-i_tblLb   = input.color(color.silver, "Label text color", group = "Info Display", tooltip = "Captions such as Volume, Buy, Delta, '0m close'.")
-i_tblVl   = input.color(color.white,  "Value text color", group = "Info Display", tooltip = "Volume, delta, high/low and countdown values.")
-i_tblAcc  = input.color(#2962FF,       "Accent color", group = "Info Display", tooltip = "Header cells, the countdown value cells and the table border.")
+i_tblBg   = input.color(#10151B,  "Table background", group = "Info Display", tooltip = "Shared background of the VP data table (top-right) and the countdown table (bottom-right).")
+i_tblLb   = input.color(#9DA9BA, "Label text color", group = "Info Display", tooltip = "Captions such as Volume, Buy, Delta, '0m close'.")
+i_tblVl   = input.color(#E6EDF7,  "Value text color", group = "Info Display", tooltip = "Volume, delta, high/low and countdown values.")
+i_tblAcc  = input.color(#3B82F6,       "Accent color", group = "Info Display", tooltip = "Header cells, the countdown value cells and the table border.")
 i_tblOp   = input.int(60,              "Table opacity (%)", minval = 10, maxval = 90, group = "Info Display", tooltip = "Opacity of the table background and the label/value cells.")
 i_tblAOp  = input.int(40,              "Accent opacity (%)", minval = 5, maxval = 90, group = "Info Display", tooltip = "Opacity of the header/access cells and the border.")
 
