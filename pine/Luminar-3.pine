@@ -40,13 +40,13 @@ c_r1     = input.color(COL_R1, "R1 color", group = "1 - Ranges", inline = "rColo
 c_r2     = input.color(COL_R2, "R2 color", group = "1 - Ranges", inline = "rColors")
 c_r3     = input.color(COL_R3, "R3 color", group = "1 - Ranges", inline = "rColors")
 c_inside = input.color(COL_INS, "Inside box color", group = "1 - Ranges")
-i_opac   = input.int(55,        "Box transparency (%)", minval = 0, maxval = 100, group = "1 - Ranges")
+i_opac   = input.int(80,        "Box transparency (%)", minval = 0, maxval = 100, group = "1 - Ranges")
 c_mid1   = input.color(color.white, "Range midpoint color", group = "1 - Ranges")
 c_mid2   = input.color(color.orange, "Inside midpoint color", group = "1 - Ranges")
-i_bxW    = input.int(1,        "Range box border (px)", minval = 0, maxval = 10, group = "1 - Ranges")
-i_hlW    = input.int(1,        "High/low line thickness (px)", minval = 1, maxval = 10, group = "1 - Ranges")
+i_bxW    = input.int(2,        "Range box border (px)", minval = 0, maxval = 10, group = "1 - Ranges")
+i_hlW    = input.int(2,        "High/low line thickness (px)", minval = 1, maxval = 10, group = "1 - Ranges")
 i_hlS    = input.string("solid", "High/low line style", options = ["solid", "dotted", "dashed"], group = "1 - Ranges")
-i_midW   = input.int(1,        "Midline thickness (px)", minval = 1, maxval = 10, group = "1 - Ranges")
+i_midW   = input.int(2,        "Midline thickness (px)", minval = 1, maxval = 10, group = "1 - Ranges")
 i_midS   = input.string("dotted", "Midline style", options = ["solid", "dotted", "dashed"], group = "1 - Ranges")
 
 //--- 2 - Volume & Delta ---
@@ -72,7 +72,7 @@ i_pval    = input.color(color.aqua, "VAL", group = "3 - Session", inline = "sess
 i_pvah    = input.color(color.fuchsia, "VAH", group = "3 - Session", inline = "sessColors")
 i_ppoc    = input.color(#FF4500, "POC", group = "3 - Session", inline = "sessColors")
 i_szLvl   = input.string("normal", "VAH/VAL/POC label size", options = ["tiny", "small", "normal", "large", "huge"], group = "3 - Session")
-i_szW     = input.int(1,        "VAH/VAL/POC line thickness (px)", minval = 1, maxval = 10, group = "3 - Session")
+i_szW     = input.int(2,        "VAH/VAL/POC line thickness (px)", minval = 1, maxval = 10, group = "3 - Session")
 i_szS     = input.string("dotted", "VAH/VAL/POC line style", options = ["solid", "dotted", "dashed"], group = "3 - Session")
 
 //--- 4 - HTF Candles ---
