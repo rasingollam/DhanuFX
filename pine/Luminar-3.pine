@@ -876,7 +876,8 @@ if actI >= 0
 //=== 5) HTF CANDLE OVERLAY (shifted into the future) ===================
 // Aggregates chart bars into i_ptf-minute buckets. The forming candle
 // and the last X closed ones are drawn as wick + body at real prices,
-// placed by bar count so spacing can never collapse: the block starts
+// anchored with xloc.bar_index (integer chart-bar offsets) so hidden
+// exchange halts / session gaps can never swallow them: the block starts
 // two candle-widths closer than 1 + X (never before the last bar),
 // oldest left, forming right. Redrawn every bar (old objects deleted
 // first, no trails).
@@ -955,28 +956,27 @@ else if bkt != pBktId
             ld = i_htgap
             gw = 3
             st = sw + gw
-            tMs = timeframe.in_seconds() * 1000
             o2  = array.get(pC, (nC2 - 1) * 4)
             h2  = array.get(pC, (nC2 - 1) * 4 + 1)
             l2  = array.get(pC, (nC2 - 1) * 4 + 2)
             c2  = array.get(pC, (nC2 - 1) * 4 + 3)
-            lx2 = time + (ld + (i_pprev - 1) * st) * tMs
-            rx2 = lx2 + sw * tMs
-            wx2 = lx2 + int(sw / 2) * tMs
+            lx2 = bar_index + ld + (i_pprev - 1) * st
+            rx2 = lx2 + sw
+            wx2 = lx2 + int(sw / 2)
             up2 = c2 >= o2
             bclr2 = up2 ? i_pup : i_pdn
             wclr2 = up2 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
             bTop2 = math.max(o2, c2)
             bBot2 = math.min(o2, c2)
-            array.push(pBoxes, box.new(lx2, bTop2, rx2, bBot2, xloc = xloc.bar_time, border_color = bclr2, bgcolor = color.new(bclr2, i_pfill), border_width = 1))
+            array.push(pBoxes, box.new(lx2, bTop2, rx2, bBot2, xloc = xloc.bar_index, border_color = bclr2, bgcolor = color.new(bclr2, i_pfill), border_width = 1))
             if h2 > bTop2
-                array.push(pWicks, line.new(wx2, h2, wx2, bTop2, xloc = xloc.bar_time, color = wclr2, width = 1))
+                array.push(pWicks, line.new(wx2, h2, wx2, bTop2, xloc = xloc.bar_index, color = wclr2, width = 1))
             else
-                array.push(pWicks, line.new(wx2, h2, wx2, bTop2, xloc = xloc.bar_time, color = wclr2, width = 1))
+                array.push(pWicks, line.new(wx2, h2, wx2, bTop2, xloc = xloc.bar_index, color = wclr2, width = 1))
             if bBot2 > l2
-                array.push(pWicks, line.new(wx2, bBot2, wx2, l2, xloc = xloc.bar_time, color = wclr2, width = 1))
+                array.push(pWicks, line.new(wx2, bBot2, wx2, l2, xloc = xloc.bar_index, color = wclr2, width = 1))
             else
-                array.push(pWicks, line.new(wx2, bBot2, wx2, l2, xloc = xloc.bar_time, color = wclr2, width = 1))
+                array.push(pWicks, line.new(wx2, bBot2, wx2, l2, xloc = xloc.bar_index, color = wclr2, width = 1))
     pBktId := bkt
     pBktO  := open
     pBktH  := high
@@ -999,8 +999,10 @@ else
 // Same NY-anchored minute grid as HTF, but stepped by i_ltf minutes, so LTF
 // candles align exactly with the HTF candle boundaries. Drawn as a compact
 // cluster right of the HTF candles (current + previous i_ltprev).
-// Horizontal shift reserved for the candle-1 VP histogram band (in ms).
-vpOff = i_vph ? i_vphw * 60000 : 0
+// Horizontal shift reserved for the candle-1 VP histogram band, in chart bars.
+// Same band width expressed in chart bars for the bar_index-anchored overlay
+// (immune to hidden halts/session gaps, unlike millisecond time offsets).
+vpBars = i_vph ? math.max(1, int(math.round(i_vphw * 60.0 / timeframe.in_seconds()))) : 0
 bktMinL = int(i_ltf)
 bktSecL = bktMinL * 60000
 bStartMinL = int((((nMM - aMin) + 1440) % 1440) / bktMinL) * bktMinL + aMin
@@ -1077,19 +1079,18 @@ else if bktL != lFId
             lsw = 6
             lgap = 3
             lstep = lsw + lgap
-            ltMs = timeframe.in_seconds() * 1000
             lk2 = i_pprev + 1 + i_ltgap + i_ltprev - 1
-            lx2 = time + vpOff + (i_htgap + lk2 * lstep) * ltMs
-            rx2 = lx2 + lsw * ltMs
-            wx2 = lx2 + int(lsw / 2) * ltMs
+            lx2 = bar_index + vpBars + i_htgap + lk2 * lstep
+            rx2 = lx2 + lsw
+            wx2 = lx2 + int(lsw / 2)
             lu2 = lC2 >= lO2
             lb2 = lu2 ? i_pup : i_pdn
             lw2 = lu2 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
             ltp2 = math.max(lO2, lC2)
             lbt2 = math.min(lO2, lC2)
-            array.push(lBoxes, box.new(lx2, ltp2, rx2, lbt2, xloc = xloc.bar_time, border_color = lb2, bgcolor = color.new(lb2, i_pfill), border_width = 1))
-            array.push(lWicks, line.new(wx2, lH2, wx2, ltp2, xloc = xloc.bar_time, color = lw2, width = 1))
-            array.push(lWicks, line.new(wx2, lbt2, wx2, lL2, xloc = xloc.bar_time, color = lw2, width = 1))
+            array.push(lBoxes, box.new(lx2, ltp2, rx2, lbt2, xloc = xloc.bar_index, border_color = lb2, bgcolor = color.new(lb2, i_pfill), border_width = 1))
+            array.push(lWicks, line.new(wx2, lH2, wx2, ltp2, xloc = xloc.bar_index, color = lw2, width = 1))
+            array.push(lWicks, line.new(wx2, lbt2, wx2, lL2, xloc = xloc.bar_index, color = lw2, width = 1))
     lFId := bktL
     lFO  := open
     lFH  := high
@@ -1141,15 +1142,14 @@ if i_panel
     lead = i_htgap
     gapW = 3
     stepW = slotW + gapW
-    tMs = timeframe.in_seconds() * 1000
     baseL = i_pprev + 1 + i_ltgap
 
     // --- forming candle (j=0): always update in-place ---
     // Placed right of the candle-1 VP band so the histogram fans out to the right.
-    c1R = time + (lead + (i_pprev - 1) * stepW) * tMs + slotW * tMs
-    lx0 = c1R + vpOff + 2 * tMs
-    rx0 = lx0 + slotW * tMs
-    wx0 = lx0 + int(slotW / 2) * tMs
+    c1R = bar_index + lead + (i_pprev - 1) * stepW + slotW
+    lx0 = c1R + vpBars + 2
+    rx0 = lx0 + slotW
+    wx0 = lx0 + int(slotW / 2)
     up0 = pBktC >= pBktO
     bclr0 = up0 ? i_pup : i_pdn
     wclr0 = up0 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
@@ -1157,19 +1157,19 @@ if i_panel
     bBot0 = math.min(pBktO, pBktC)
 
     if na(fWickUp)
-        fWickUp := line.new(wx0, pBktH, wx0, bTop0, xloc = xloc.bar_time, color = wclr0, width = 1)
+        fWickUp := line.new(wx0, pBktH, wx0, bTop0, xloc = xloc.bar_index, color = wclr0, width = 1)
     else
         line.set_xy1(fWickUp, wx0, pBktH)
         line.set_xy2(fWickUp, wx0, bTop0)
         line.set_color(fWickUp, wclr0)
     if na(fWickDn)
-        fWickDn := line.new(wx0, bBot0, wx0, pBktL, xloc = xloc.bar_time, color = wclr0, width = 1)
+        fWickDn := line.new(wx0, bBot0, wx0, pBktL, xloc = xloc.bar_index, color = wclr0, width = 1)
     else
         line.set_xy1(fWickDn, wx0, bBot0)
         line.set_xy2(fWickDn, wx0, pBktL)
         line.set_color(fWickDn, wclr0)
     if na(fBox)
-        fBox := box.new(lx0, bTop0, rx0, bBot0, xloc = xloc.bar_time, border_color = bclr0, bgcolor = color.new(bclr0, i_pfill), border_width = 1)
+        fBox := box.new(lx0, bTop0, rx0, bBot0, xloc = xloc.bar_index, border_color = bclr0, bgcolor = color.new(bclr0, i_pfill), border_width = 1)
     else
         box.set_left(fBox, lx0)
         box.set_top(fBox, bTop0)
@@ -1195,9 +1195,9 @@ if i_panel
             h  = array.get(pC, base + 1)
             l  = array.get(pC, base + 2)
             c  = array.get(pC, base + 3)
-            lx = time + (lead + (i_pprev - j) * stepW) * tMs
-            rx = lx + slotW * tMs
-            wx = lx + int(slotW / 2) * tMs
+            lx = bar_index + lead + (i_pprev - j) * stepW
+            rx = lx + slotW
+            wx = lx + int(slotW / 2)
             up = c >= o
             bclr = up ? i_pup : i_pdn
             wclr = up ? color.new(i_pup, 45) : color.new(i_pdn, 45)
@@ -1246,7 +1246,7 @@ if i_panel
             lvlsP = math.max(2, i_vplvls)
             [vVols, vLo, vStp, vMx, vPoc, vVaHi, vVaLo] = f_candleProfile(c1Id, c1Id + bktSec, lvlsP)
             if vPoc >= 0 and not na(vLo) and not na(vStp) and vStp > 0 and not na(vMx) and vMx > 0
-                bwP = i_vphw * 60000
+                bwP = vpBars
                 for q = 0 to lvlsP - 1
                     vqP = array.get(vVols, q)
                     if vqP > 0
@@ -1260,22 +1260,22 @@ if i_panel
                              : q == vVaHi
                              ? color.new(tVpVahEff, 25)
                              : (q >= vVaLo and q <= vVaHi) ? color.new(tVpVaEff, 45) : color.new(tVpBinEff, 35)
-                        array.push(vpBoxes, box.new(0, bhiP, 0, bloP, xloc = xloc.bar_time, border_color = bclrP, bgcolor = bclrP, border_width = 1))
+                        array.push(vpBoxes, box.new(bar_index, bhiP, bar_index, bloP, xloc = xloc.bar_index, border_color = bclrP, bgcolor = bclrP, border_width = 1))
                         array.push(vpW, wqP)
                         if q == vPoc
-                            vpLpoc := label.new(int(bwP / 2), (bloP + bhiP) / 2 - vStp * 0.3, "POC", xloc = xloc.bar_time, color = na,
+                            vpLpoc := label.new(bar_index, (bloP + bhiP) / 2 - vStp * 0.3, "POC", xloc = xloc.bar_index, color = na,
                                  textcolor = f_txtC(tVpPocEff), style = label.style_none, size = size.small)
                             vpWpoc := wqP
                         if q == vVaLo and vVaLo != vPoc
-                            vpLval := label.new(int(bwP / 2), (bloP + bhiP) / 2 - vStp * 0.3, "VAL", xloc = xloc.bar_time, color = na,
+                            vpLval := label.new(bar_index, (bloP + bhiP) / 2 - vStp * 0.3, "VAL", xloc = xloc.bar_index, color = na,
                                  textcolor = f_txtC(tVpValEff), style = label.style_none, size = size.small)
                             vpWval := wqP
                         if q == vVaHi and vVaHi != vPoc
-                            vpLvah := label.new(int(bwP / 2), (bloP + bhiP) / 2 - vStp * 0.3, "VAH", xloc = xloc.bar_time, color = na,
+                            vpLvah := label.new(bar_index, (bloP + bhiP) / 2 - vStp * 0.3, "VAH", xloc = xloc.bar_index, color = na,
                                  textcolor = f_txtC(tVpVahEff), style = label.style_none, size = size.small)
                             vpWvah := wqP
         if array.size(vpBoxes) > 0
-            HL = time + (lead + (i_pprev - 1) * stepW) * tMs + slotW * tMs + tMs
+            HL = bar_index + lead + (i_pprev - 1) * stepW + slotW + 1
             for bI = 0 to array.size(vpBoxes) - 1
                 box.set_left(array.get(vpBoxes, bI), HL)
                 box.set_right(array.get(vpBoxes, bI), HL + array.get(vpW, bI))
@@ -1303,18 +1303,18 @@ if i_panel
     // --- LTF cluster (persistent objects, repositioned every bar) ---
     if i_lpanel
         // forming / current LTF candle (rightmost of the LTF cluster)
-        lxL0 = time + vpOff + (lead + (baseL + i_ltprev) * stepW) * tMs
-        rxL0 = lxL0 + slotW * tMs
-        wxL0 = lxL0 + int(slotW / 2) * tMs
+        lxL0 = bar_index + vpBars + lead + (baseL + i_ltprev) * stepW
+        rxL0 = lxL0 + slotW
+        wxL0 = lxL0 + int(slotW / 2)
         lup0 = lFC >= lFO
         lb0 = lup0 ? i_pup : i_pdn
         lw0 = lup0 ? color.new(i_pup, 45) : color.new(i_pdn, 45)
         ltp0 = math.max(lFO, lFC)
         lbt0 = math.min(lFO, lFC)
         if na(lfBox)
-            lfBox := box.new(lxL0, ltp0, rxL0, lbt0, xloc = xloc.bar_time, border_color = lb0, bgcolor = color.new(lb0, i_pfill), border_width = 1)
-            lfWickUp := line.new(wxL0, lFH, wxL0, ltp0, xloc = xloc.bar_time, color = lw0, width = 1)
-            lfWickDn := line.new(wxL0, lbt0, wxL0, lFL, xloc = xloc.bar_time, color = lw0, width = 1)
+            lfBox := box.new(lxL0, ltp0, rxL0, lbt0, xloc = xloc.bar_index, border_color = lb0, bgcolor = color.new(lb0, i_pfill), border_width = 1)
+            lfWickUp := line.new(wxL0, lFH, wxL0, ltp0, xloc = xloc.bar_index, color = lw0, width = 1)
+            lfWickDn := line.new(wxL0, lbt0, wxL0, lFL, xloc = xloc.bar_index, color = lw0, width = 1)
         else
             box.set_left(lfBox, lxL0)
             box.set_top(lfBox, ltp0)
@@ -1343,9 +1343,9 @@ if i_panel
                 lL = array.get(lC, bL + 2)
                 cL = array.get(lC, bL + 3)
                 lk3 = baseL + i_ltprev - jL
-                lxL = time + vpOff + (lead + lk3 * stepW) * tMs
-                rxL = lxL + slotW * tMs
-                wxL = lxL + int(slotW / 2) * tMs
+                lxL = bar_index + vpBars + lead + lk3 * stepW
+                rxL = lxL + slotW
+                wxL = lxL + int(slotW / 2)
                 lupC = cL >= oL
                 lbC = lupC ? i_pup : i_pdn
                 lwC = lupC ? color.new(i_pup, 45) : color.new(i_pdn, 45)
