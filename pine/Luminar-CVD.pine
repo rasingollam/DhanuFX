@@ -14,8 +14,6 @@ lowerTimeframeTooltip = "The indicator scans lower timeframe data to approximate
  + " \n\nHigher timeframes provide more historical data, but the data will be less precise."
 useCustomTimeframeInput = input.bool(false, "Use custom timeframe", tooltip = lowerTimeframeTooltip, active = not useTicks)
 lowerTimeframeInput = input.timeframe("1", "Timeframe", active = useCustomTimeframeInput and not useTicks)
-i_up = input.color(color.teal, "Up color")
-i_dn = input.color(color.red, "Down color")
 
 var lowerTimeframe = switch
     useTicks                => "1T"
@@ -28,7 +26,7 @@ var lowerTimeframe = switch
 
 [openVolume, maxVolume, minVolume, lastVolume] = ta.requestVolumeDelta(lowerTimeframe, anchorInput)
 
-col = lastVolume >= openVolume ? i_up : i_dn
+col = lastVolume >= openVolume ? color.teal : color.red
 hline(0)
 plotcandle(openVolume, maxVolume, minVolume, lastVolume, "CVD", color = col, bordercolor = col, wickcolor = col)
 
