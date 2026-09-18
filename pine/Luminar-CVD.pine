@@ -47,9 +47,19 @@ i_divOn  = input.bool(true, "Show price-CVD divergence")
 i_divL   = input.int(5, "Pivot left bars", minval = 1, maxval = 50)
 i_divR   = input.int(3, "Pivot right bars", minval = 1, maxval = 50)
 i_divMax = input.int(100, "Max divergence length (bars)", minval = 10, maxval = 1000)
+i_divPiv = input.bool(true, "Show CVD swing markers")
 
 swingHi = ta.pivothigh(high, i_divL, i_divR)
 swingLo = ta.pivotlow(low, i_divL, i_divR)
+
+// CVD pivots hoisted (same every-bar rule as price pivots); markers use
+// absolute CVD-scale positioning since this is a volume-scale pane.
+cvdSwingHi = ta.pivothigh(maxVolume, i_divL, i_divR)
+cvdSwingLo = ta.pivotlow(minVolume, i_divL, i_divR)
+cvdHiMark = not na(cvdSwingHi) ? maxVolume[i_divR] : na
+cvdLoMark = not na(cvdSwingLo) ? minVolume[i_divR] : na
+plotshape(i_divPiv ? cvdHiMark : na, title = "CVD Swing High", style = shape.triangledown, location = location.absolute, color = color.red, size = size.tiny, offset = -i_divR)
+plotshape(i_divPiv ? cvdLoMark : na, title = "CVD Swing Low", style = shape.triangleup, location = location.absolute, color = color.teal, size = size.tiny, offset = -i_divR)
 
 var array<int>   dHB = array.new_int()
 var array<float> dHV = array.new_float()
@@ -84,13 +94,13 @@ if i_divOn
         dPrevPlC := na
         dPrevPlCB := na
         dLastBullB := na
-    if not na(ta.pivothigh(maxVolume, i_divL, i_divR))
+    if not na(cvdSwingHi)
         array.push(dHB, bar_index[i_divR])
         array.push(dHV, maxVolume[i_divR])
         while array.size(dHB) > 30
             array.shift(dHB)
             array.shift(dHV)
-    if not na(ta.pivotlow(minVolume, i_divL, i_divR))
+    if not na(cvdSwingLo)
         array.push(dLB, bar_index[i_divR])
         array.push(dLV, minVolume[i_divR])
         while array.size(dLB) > 30
