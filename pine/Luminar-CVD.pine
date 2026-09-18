@@ -45,6 +45,7 @@ if barstate.islast
 // CVD swings (volume scale), so signals check 1:1 against the price-chart
 // lines in the main indicator. Same defaults: 5 / 3 / 100 bars.
 i_divOn  = input.bool(true, "Show price-CVD divergence")
+i_divMode = input.string("Both", "Divergence type", options = ["Regular", "Hidden", "Both"])
 i_divL   = input.int(5, "Pivot left bars", minval = 1, maxval = 50)
 i_divR   = input.int(3, "Pivot right bars", minval = 1, maxval = 50)
 i_divMax = input.int(100, "Max divergence length (bars)", minval = 10, maxval = 1000)
@@ -122,13 +123,15 @@ if i_divOn
         dPrevCvdLB := dLastCvdLB
         dLastCvdL := minVolume[i_divR]
         dLastCvdLB := bar_index[i_divR]
-    if not na(dLastPhP) and not na(dPrevPhP) and not na(dLastCvdH) and not na(dPrevCvdH) and (na(dLastBearB) or dLastPhB != dLastBearB) and dLastPhP > dPrevPhP and dLastCvdH < dPrevCvdH and dLastPhB - dPrevPhB <= i_divMax
-        line.new(dPrevCvdHB, dPrevCvdH, dLastCvdHB, dLastCvdH, xloc = xloc.bar_index, color = color.red, style = line.style_solid, width = 2)
-        label.new(dLastCvdHB, dLastCvdH, "Bear Div", xloc = xloc.bar_index, color = color.red, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if not na(dLastPhP) and not na(dPrevPhP) and not na(dLastCvdH) and not na(dPrevCvdH) and (na(dLastBearB) or dLastPhB != dLastBearB) and dLastPhB - dPrevPhB <= i_divMax and ((i_divMode != "Hidden" and dLastPhP > dPrevPhP and dLastCvdH < dPrevCvdH) or (i_divMode != "Regular" and dLastPhP < dPrevPhP and dLastCvdH > dPrevCvdH))
+        dBearHid = i_divMode != "Regular" and dLastPhP < dPrevPhP and dLastCvdH > dPrevCvdH
+        line.new(dPrevCvdHB, dPrevCvdH, dLastCvdHB, dLastCvdH, xloc = xloc.bar_index, color = color.red, style = dBearHid ? line.style_dashed : line.style_solid, width = 2)
+        label.new(dLastCvdHB, dLastCvdH, dBearHid ? "H Bear Div" : "Bear Div", xloc = xloc.bar_index, color = color.red, textcolor = color.white, style = label.style_label_down, size = size.small)
         dLastBearB := dLastPhB
-        alert("Luminar-3 CVD: bearish price-CVD divergence", alert.freq_once_per_bar_close)
-    if not na(dLastPlP) and not na(dPrevPlP) and not na(dLastCvdL) and not na(dPrevCvdL) and (na(dLastBullB) or dLastPlB != dLastBullB) and dLastPlP < dPrevPlP and dLastCvdL > dPrevCvdL and dLastPlB - dPrevPlB <= i_divMax
-        line.new(dPrevCvdLB, dPrevCvdL, dLastCvdLB, dLastCvdL, xloc = xloc.bar_index, color = color.teal, style = line.style_solid, width = 2)
-        label.new(dLastCvdLB, dLastCvdL, "Bull Div", xloc = xloc.bar_index, color = color.teal, textcolor = color.white, style = label.style_label_up, size = size.small)
+        alert(dBearHid ? "Luminar-3 CVD: hidden bearish price-CVD divergence" : "Luminar-3 CVD: bearish price-CVD divergence", alert.freq_once_per_bar_close)
+    if not na(dLastPlP) and not na(dPrevPlP) and not na(dLastCvdL) and not na(dPrevCvdL) and (na(dLastBullB) or dLastPlB != dLastBullB) and dLastPlB - dPrevPlB <= i_divMax and ((i_divMode != "Hidden" and dLastPlP < dPrevPlP and dLastCvdL > dPrevCvdL) or (i_divMode != "Regular" and dLastPlP > dPrevPlP and dLastCvdL < dPrevCvdL))
+        dBullHid = i_divMode != "Regular" and dLastPlP > dPrevPlP and dLastCvdL < dPrevCvdL
+        line.new(dPrevCvdLB, dPrevCvdL, dLastCvdLB, dLastCvdL, xloc = xloc.bar_index, color = color.teal, style = dBullHid ? line.style_dashed : line.style_solid, width = 2)
+        label.new(dLastCvdLB, dLastCvdL, dBullHid ? "H Bull Div" : "Bull Div", xloc = xloc.bar_index, color = color.teal, textcolor = color.white, style = label.style_label_up, size = size.small)
         dLastBullB := dLastPlB
-        alert("Luminar-3 CVD: bullish price-CVD divergence", alert.freq_once_per_bar_close)
+        alert(dBullHid ? "Luminar-3 CVD: hidden bullish price-CVD divergence" : "Luminar-3 CVD: bullish price-CVD divergence", alert.freq_once_per_bar_close)
