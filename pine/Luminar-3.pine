@@ -1451,81 +1451,108 @@ cvdLowerTf = switch
     => "60"
 [cvdOpen, cvdHigh, cvdLow, cvdLast] = ta.requestVolumeDelta(cvdLowerTf, i_cvdAnchor)
 
+// Swing pivots hoisted to globals: ta.pivot* depends on bar history and must
+// execute on every bar for consistent results, so the engine and the markers
+// below share these instead of calling inside conditional expressions.
+swingHi = ta.pivothigh(high, i_cvdDivL, i_cvdDivR)
+swingLo = ta.pivotlow(low, i_cvdDivL, i_cvdDivR)
+
 //===== Price-CVD divergence (regular, drawn on the price chart) =====
-// Price pivots vs CVD's OWN pivots, bar_index-anchored. Each side keeps its
-// last two confirmed swings; a price swing is checked against CVD's most
-// recent swings (not CVD sampled at the price bar, whose extreme usually
-// prints a few bars away). Bearish: price higher-high + CVD lower-high.
-// Bullish: price lower-low + CVD higher-low. Only near-term pairs (within
-// Max divergence length) signal, once per swing, and references reset on
-// each CVD anchor rollover. Latest signal latches for the CVD panel.
+// Each confirmed price swing is paired with CVD's own swing nearest to it in
+// time (extreme CVD pivot within a pivot-footprint neighborhood of the price
+// pivot bar), bar_index-anchored. Stale CVD swings can never leak in, so a
+// signal always compares the two current swings. Bearish: price higher-high
+// + paired CVD lower-high. Bullish: price lower-low + paired CVD higher-low.
+// Only near-term pairs (within Max divergence length) signal, once per swing;
+// references reset on each CVD anchor rollover. Latest signal latches.
+var array<int>   cvdHB = array.new_int()
+var array<float> cvdHV = array.new_float()
+var array<int>   cvdLB = array.new_int()
+var array<float> cvdLV = array.new_float()
 var float prevPhP = na
 var int   prevPhB = na
-var float lastPhP = na
-var int   lastPhB = na
-var float prevCvdH = na
-var float lastCvdH = na
+var float prevPhC = na
 var int   lastBearB = na
 var float prevPlP = na
 var int   prevPlB = na
-var float lastPlP = na
-var int   lastPlB = na
-var float prevCvdL = na
-var float lastCvdL = na
+var float prevPlC = na
 var int   lastBullB = na
 var string cvdDivState = "—"
 cvdAnchorChg = ta.change(time(i_cvdAnchor))
 cvdAnchorRollover = not na(cvdAnchorChg) and cvdAnchorChg != 0
+cvdPairTol = (i_cvdDivL + i_cvdDivR) * 2
 if i_cvdDiv
     if cvdAnchorRollover
+        array.clear(cvdHB)
+        array.clear(cvdHV)
+        array.clear(cvdLB)
+        array.clear(cvdLV)
         prevPhP := na
         prevPhB := na
-        lastPhP := na
-        lastPhB := na
-        prevCvdH := na
-        lastCvdH := na
+        prevPhC := na
         lastBearB := na
         prevPlP := na
         prevPlB := na
-        lastPlP := na
-        lastPlB := na
-        prevCvdL := na
-        lastCvdL := na
+        prevPlC := na
         lastBullB := na
         cvdDivState := "—"
-    if not na(ta.pivothigh(high, i_cvdDivL, i_cvdDivR))
-        prevPhP := lastPhP
-        prevPhB := lastPhB
-        lastPhP := high[i_cvdDivR]
-        lastPhB := bar_index[i_cvdDivR]
     if not na(ta.pivothigh(cvdLast, i_cvdDivL, i_cvdDivR))
-        prevCvdH := lastCvdH
-        lastCvdH := cvdLast[i_cvdDivR]
-    if not na(ta.pivotlow(low, i_cvdDivL, i_cvdDivR))
-        prevPlP := lastPlP
-        prevPlB := lastPlB
-        lastPlP := low[i_cvdDivR]
-        lastPlB := bar_index[i_cvdDivR]
+        array.push(cvdHB, bar_index[i_cvdDivR])
+        array.push(cvdHV, cvdLast[i_cvdDivR])
+        while array.size(cvdHB) > 30
+            array.shift(cvdHB)
+            array.shift(cvdHV)
     if not na(ta.pivotlow(cvdLast, i_cvdDivL, i_cvdDivR))
-        prevCvdL := lastCvdL
-        lastCvdL := cvdLast[i_cvdDivR]
-    if not na(lastPhP) and not na(prevPhP) and not na(lastCvdH) and not na(prevCvdH) and (na(lastBearB) or lastPhB != lastBearB) and lastPhP > prevPhP and lastCvdH < prevCvdH and lastPhB - prevPhB <= i_cvdDivMax
-        f_regLine(line.new(prevPhB, prevPhP, lastPhB, lastPhP, xloc = xloc.bar_index, color = c_dneg, style = line.style_solid, width = 2))
-        f_regLabel(label.new(lastPhB, lastPhP, "Bear Div", xloc = xloc.bar_index, color = c_dneg, textcolor = f_txtC(c_dneg), style = label.style_label_down, size = size.small))
-        cvdDivState := "Bear Div"
-        lastBearB := lastPhB
-        alert("Luminar-3: bearish price-CVD divergence", alert.freq_once_per_bar_close)
-    if not na(lastPlP) and not na(prevPlP) and not na(lastCvdL) and not na(prevCvdL) and (na(lastBullB) or lastPlB != lastBullB) and lastPlP < prevPlP and lastCvdL > prevCvdL and lastPlB - prevPlB <= i_cvdDivMax
-        f_regLine(line.new(prevPlB, prevPlP, lastPlB, lastPlP, xloc = xloc.bar_index, color = c_dpos, style = line.style_solid, width = 2))
-        f_regLabel(label.new(lastPlB, lastPlP, "Bull Div", xloc = xloc.bar_index, color = c_dpos, textcolor = f_txtC(c_dpos), style = label.style_label_up, size = size.small))
-        cvdDivState := "Bull Div"
-        lastBullB := lastPlB
-        alert("Luminar-3: bullish price-CVD divergence", alert.freq_once_per_bar_close)
+        array.push(cvdLB, bar_index[i_cvdDivR])
+        array.push(cvdLV, cvdLast[i_cvdDivR])
+        while array.size(cvdLB) > 30
+            array.shift(cvdLB)
+            array.shift(cvdLV)
+    if not na(swingHi)
+        curPhB = bar_index[i_cvdDivR]
+        curPhP = high[i_cvdDivR]
+        float pairPhC = na
+        if array.size(cvdHB) > 0
+            for k = 0 to array.size(cvdHB) - 1
+                kb = array.get(cvdHB, k)
+                kv = array.get(cvdHV, k)
+                if math.abs(kb - curPhB) <= cvdPairTol and (na(pairPhC) or kv > pairPhC)
+                    pairPhC := kv
+        if not na(pairPhC)
+            if not na(prevPhP) and not na(prevPhC) and (na(lastBearB) or curPhB != lastBearB) and curPhP > prevPhP and pairPhC < prevPhC and curPhB - prevPhB <= i_cvdDivMax
+                f_regLine(line.new(prevPhB, prevPhP, curPhB, curPhP, xloc = xloc.bar_index, color = c_dneg, style = line.style_solid, width = 2))
+                f_regLabel(label.new(curPhB, curPhP, "Bear Div", xloc = xloc.bar_index, color = c_dneg, textcolor = f_txtC(c_dneg), style = label.style_label_down, size = size.small))
+                cvdDivState := "Bear Div"
+                lastBearB := curPhB
+                alert("Luminar-3: bearish price-CVD divergence", alert.freq_once_per_bar_close)
+            prevPhP := curPhP
+            prevPhB := curPhB
+            prevPhC := pairPhC
+    if not na(swingLo)
+        curPlB = bar_index[i_cvdDivR]
+        curPlP = low[i_cvdDivR]
+        float pairPlC = na
+        if array.size(cvdLB) > 0
+            for k = 0 to array.size(cvdLB) - 1
+                kb = array.get(cvdLB, k)
+                kv = array.get(cvdLV, k)
+                if math.abs(kb - curPlB) <= cvdPairTol and (na(pairPlC) or kv < pairPlC)
+                    pairPlC := kv
+        if not na(pairPlC)
+            if not na(prevPlP) and not na(prevPlC) and (na(lastBullB) or curPlB != lastBullB) and curPlP < prevPlP and pairPlC > prevPlC and curPlB - prevPlB <= i_cvdDivMax
+                f_regLine(line.new(prevPlB, prevPlP, curPlB, curPlP, xloc = xloc.bar_index, color = c_dpos, style = line.style_solid, width = 2))
+                f_regLabel(label.new(curPlB, curPlP, "Bull Div", xloc = xloc.bar_index, color = c_dpos, textcolor = f_txtC(c_dpos), style = label.style_label_up, size = size.small))
+                cvdDivState := "Bull Div"
+                lastBullB := curPlB
+                alert("Luminar-3: bullish price-CVD divergence", alert.freq_once_per_bar_close)
+            prevPlP := curPlP
+            prevPlB := curPlB
+            prevPlC := pairPlC
 
 // Swing high/low markers: the exact pivots the divergence engine compares,
 // shifted back onto the swing bar. Independent toggle.
-plotshape(i_cvdPiv and not na(ta.pivothigh(high, i_cvdDivL, i_cvdDivR)), title = "Swing High", style = shape.triangledown, location = location.abovebar, color = c_dneg, size = size.tiny, offset = -i_cvdDivR)
-plotshape(i_cvdPiv and not na(ta.pivotlow(low, i_cvdDivL, i_cvdDivR)), title = "Swing Low", style = shape.triangleup, location = location.belowbar, color = c_dpos, size = size.tiny, offset = -i_cvdDivR)
+plotshape(i_cvdPiv and not na(swingHi), title = "Swing High", style = shape.triangledown, location = location.abovebar, color = c_dneg, size = size.tiny, offset = -i_cvdDivR)
+plotshape(i_cvdPiv and not na(swingLo), title = "Swing Low", style = shape.triangleup, location = location.belowbar, color = c_dpos, size = size.tiny, offset = -i_cvdDivR)
 
 //===== Info display: volume grid top-right, countdown table bottom-right =====
 // Two tables anchored at different corners (the layout Pine supports without any
