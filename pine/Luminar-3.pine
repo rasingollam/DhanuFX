@@ -1496,15 +1496,15 @@ if i_cvdDiv
         prevPlC := na
         lastBullB := na
         cvdDivState := "—"
-    if not na(ta.pivothigh(cvdLast, i_cvdDivL, i_cvdDivR))
+    if not na(ta.pivothigh(cvdHigh, i_cvdDivL, i_cvdDivR))
         array.push(cvdHB, bar_index[i_cvdDivR])
-        array.push(cvdHV, cvdLast[i_cvdDivR])
+        array.push(cvdHV, cvdHigh[i_cvdDivR])
         while array.size(cvdHB) > 30
             array.shift(cvdHB)
             array.shift(cvdHV)
-    if not na(ta.pivotlow(cvdLast, i_cvdDivL, i_cvdDivR))
+    if not na(ta.pivotlow(cvdLow, i_cvdDivL, i_cvdDivR))
         array.push(cvdLB, bar_index[i_cvdDivR])
-        array.push(cvdLV, cvdLast[i_cvdDivR])
+        array.push(cvdLV, cvdLow[i_cvdDivR])
         while array.size(cvdLB) > 30
             array.shift(cvdLB)
             array.shift(cvdLV)
