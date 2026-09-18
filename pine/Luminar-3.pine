@@ -1518,15 +1518,15 @@ if i_cvdDiv
     if not na(lastPhP) and not na(prevPhP) and not na(lastCvdH) and not na(prevCvdH) and (na(lastBearB) or lastPhB != lastBearB) and lastPhB - prevPhB <= i_cvdDivMax and ((i_cvdDivMode != "Hidden" and lastPhP > prevPhP and lastCvdH < prevCvdH) or (i_cvdDivMode != "Regular" and lastPhP < prevPhP and lastCvdH > prevCvdH))
         bearHid = i_cvdDivMode != "Regular" and lastPhP < prevPhP and lastCvdH > prevCvdH
         f_regLine(line.new(prevPhB, prevPhP, lastPhB, lastPhP, xloc = xloc.bar_index, color = c_dneg, style = bearHid ? line.style_dashed : line.style_solid, width = 2))
-        f_regLabel(label.new(lastPhB, lastPhP, bearHid ? "H Bear Div" : "Bear Div", xloc = xloc.bar_index, color = c_dneg, textcolor = f_txtC(c_dneg), style = label.style_label_down, size = size.small))
-        cvdDivState := bearHid ? "H Bear Div" : "Bear Div"
+        f_regLabel(label.new(lastPhB, lastPhP, "Bear Div", xloc = xloc.bar_index, color = c_dneg, textcolor = f_txtC(c_dneg), style = label.style_label_down, size = size.small))
+        cvdDivState := "Bear Div"
         lastBearB := lastPhB
         alert(bearHid ? "Luminar-3: hidden bearish price-CVD divergence" : "Luminar-3: bearish price-CVD divergence", alert.freq_once_per_bar_close)
     if not na(lastPlP) and not na(prevPlP) and not na(lastCvdL) and not na(prevCvdL) and (na(lastBullB) or lastPlB != lastBullB) and lastPlB - prevPlB <= i_cvdDivMax and ((i_cvdDivMode != "Hidden" and lastPlP < prevPlP and lastCvdL > prevCvdL) or (i_cvdDivMode != "Regular" and lastPlP > prevPlP and lastCvdL < prevCvdL))
         bullHid = i_cvdDivMode != "Regular" and lastPlP > prevPlP and lastCvdL < prevCvdL
         f_regLine(line.new(prevPlB, prevPlP, lastPlB, lastPlP, xloc = xloc.bar_index, color = c_dpos, style = bullHid ? line.style_dashed : line.style_solid, width = 2))
-        f_regLabel(label.new(lastPlB, lastPlP, bullHid ? "H Bull Div" : "Bull Div", xloc = xloc.bar_index, color = c_dpos, textcolor = f_txtC(c_dpos), style = label.style_label_up, size = size.small))
-        cvdDivState := bullHid ? "H Bull Div" : "Bull Div"
+        f_regLabel(label.new(lastPlB, lastPlP, "Bull Div", xloc = xloc.bar_index, color = c_dpos, textcolor = f_txtC(c_dpos), style = label.style_label_up, size = size.small))
+        cvdDivState := "Bull Div"
         lastBullB := lastPlB
         alert(bullHid ? "Luminar-3: hidden bullish price-CVD divergence" : "Luminar-3: bullish price-CVD divergence", alert.freq_once_per_bar_close)
 
@@ -1677,7 +1677,7 @@ if i_showCvd
     table.cell(tbD, 0, 4, "Last", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
     table.cell(tbD, 1, 4, na(cvdLast) ? "-" : (cvdLast >= 0 ? "+" : "") + f_cvol(cvdLast), text_color = cvdLastCol, bgcolor = cvdBg, text_size = size.small)
     table.cell(tbD, 0, 5, "Signal", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
-    table.cell(tbD, 1, 5, cvdDivState, text_color = (cvdDivState == "Bear Div" or cvdDivState == "H Bear Div") ? c_dneg : (cvdDivState == "Bull Div" or cvdDivState == "H Bull Div") ? c_dpos : cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 5, cvdDivState, text_color = cvdDivState == "Bear Div" ? c_dneg : cvdDivState == "Bull Div" ? c_dpos : cvdLbEff, bgcolor = cvdBg, text_size = size.small)
 else
     if not na(tbD)
         table.delete(tbD)
