@@ -8,6 +8,8 @@
 indicator("Luminar-3", overlay=true,
      max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=5000)
 
+import TradingView/ta/12
+
 // Colors are editable per group in the Inputs dialog. Bright chart-level
 // defaults (midlines, volume/VA text, value-area fills) auto-adjust to the
 // light/dark chart theme behind the scenes.
@@ -111,6 +113,19 @@ i_vpVal = input.color(#22D3EE, "VAL color", group = "Candle-1 VP", tooltip = "Lo
 i_vpVah = input.color(#C084FC, "VAH color", group = "Candle-1 VP", tooltip = "Upper value-area edge bin fill and its label.")
 i_vpVa  = input.color(#D9E6F7, "Value-area fill", group = "Candle-1 VP", tooltip = "Fill of the bins inside the value area (VAH to VAL).")
 i_vpBin = input.color(#64748B, "Other bins", group = "Candle-1 VP", tooltip = "Fill of the bins outside the value area.")
+
+//--- CVD ---
+i_showCvd   = input.bool(true, "Show CVD panel", group = "CVD", tooltip = "Cumulative Volume Delta panel (bottom-left), same engine as TradingView's built-in CVD.")
+i_cvdAnchor = input.timeframe("1W", "Anchor period", group = "CVD")
+i_cvdAgg    = input.string("Time", "Data aggregation", options = ["Time", "1 tick"], group = "CVD", tooltip = "Defines how lower timeframe data is aggregated for the delta calculation. \"1 tick\" computes the delta on tick data and is available only on expert plans.")
+i_cvdCustom = input.bool(false, "Use custom timeframe", group = "CVD", tooltip = "Override the automatic lower timeframe used to approximate up/down volume. Higher timeframes provide more historical data, but the data will be less precise.", active = i_cvdAgg != "1 tick")
+i_cvdTf     = input.timeframe("1", "Timeframe", group = "CVD", active = i_cvdCustom and i_cvdAgg != "1 tick")
+i_cvdDiv    = input.bool(true, "Show price-CVD divergence", group = "CVD", tooltip = "Price-CVD divergence between pivot highs/lows, drawn on the price chart. Pivot-confirmed, so a fresh signal can repaint until the pivot confirms.")
+i_cvdDivMode = input.string("Both", "Divergence type", options = ["Regular", "Hidden", "Both"], group = "CVD", tooltip = "Regular: price and CVD disagree (reversal). Hidden: price makes a higher low / lower high while CVD makes a lower low / higher high (trend continuation).")
+i_cvdDivL   = input.int(5, "Pivot left bars", minval = 1, maxval = 50, group = "CVD")
+i_cvdDivR   = input.int(3, "Pivot right bars", minval = 1, maxval = 50, group = "CVD")
+i_cvdDivMax = input.int(50, "Max divergence length (bars)", minval = 10, maxval = 1000, group = "CVD", tooltip = "Only near-term divergences: pivots older than this are dropped, so long-spanning divergences never signal.")
+i_cvdPiv    = input.bool(false, "Show swing high/low markers", group = "CVD", tooltip = "Triangle markers on the exact swing highs/lows the divergence engine uses. Markers confirm late with the pivots.")
 
 //--- Info Display ---
 i_showTbl = input.bool(true,   "Show info tables", group = "Info Display", tooltip = "Top-right table with live HTF/LTF candle volume, buy/sell/delta and the HTF/LTF/range countdowns.")
@@ -1424,6 +1439,102 @@ else
         vpLval := na
     vpCandle := na
 
+//===== CVD (Cumulative Volume Delta, same engine as TV's built-in) =====
+// Overlay script, so CVD is shown as values in its own panel (bottom-left)
+// instead of a separate-pane plot. Anchor 1W + Time aggregation by default.
+cvdUseTicks = i_cvdAgg == "1 tick"
+cvdLowerTf = switch
+    cvdUseTicks          => "1T"
+    i_cvdCustom          => i_cvdTf
+    timeframe.isseconds  => "1S"
+    timeframe.isintraday => "1"
+    timeframe.isdaily    => "5"
+    => "60"
+[cvdOpen, cvdHigh, cvdLow, cvdLast] = ta.requestVolumeDelta(cvdLowerTf, i_cvdAnchor)
+
+// Swing pivots hoisted to globals: ta.pivot* depends on bar history and must
+// execute on every bar for consistent results, so the engine and the markers
+// below share these instead of calling inside conditional expressions.
+swingHi = ta.pivothigh(high, i_cvdDivL, i_cvdDivR)
+swingLo = ta.pivotlow(low, i_cvdDivL, i_cvdDivR)
+
+//===== Price-CVD divergence (regular, drawn on the price chart) =====
+// Textbook consecutive-swing comparison on both sides, bar_index-anchored:
+// price swing[1] vs swing[2] together with CVD's own swing[1] vs swing[2]
+// (CVD candle highs/lows). Bullish: price lower-low + CVD higher-low.
+// Bearish: price higher-high + CVD lower-high. Only near-term pairs (within
+// Max divergence length) signal, once per swing; references reset on each
+// CVD anchor rollover. Latest signal latches for the CVD panel.
+var float prevPhP = na
+var int   prevPhB = na
+var float lastPhP = na
+var int   lastPhB = na
+var float prevCvdH = na
+var float lastCvdH = na
+var int   lastBearB = na
+var float prevPlP = na
+var int   prevPlB = na
+var float lastPlP = na
+var int   lastPlB = na
+var float prevCvdL = na
+var float lastCvdL = na
+var int   lastBullB = na
+var string cvdDivState = "—"
+cvdAnchorChg = ta.change(time(i_cvdAnchor))
+cvdAnchorRollover = not na(cvdAnchorChg) and cvdAnchorChg != 0
+if i_cvdDiv
+    if cvdAnchorRollover
+        prevPhP := na
+        prevPhB := na
+        lastPhP := na
+        lastPhB := na
+        prevCvdH := na
+        lastCvdH := na
+        lastBearB := na
+        prevPlP := na
+        prevPlB := na
+        lastPlP := na
+        lastPlB := na
+        prevCvdL := na
+        lastCvdL := na
+        lastBullB := na
+        cvdDivState := "—"
+    if not na(swingHi)
+        prevPhP := lastPhP
+        prevPhB := lastPhB
+        lastPhP := high[i_cvdDivR]
+        lastPhB := bar_index[i_cvdDivR]
+    if not na(ta.pivothigh(cvdHigh, i_cvdDivL, i_cvdDivR))
+        prevCvdH := lastCvdH
+        lastCvdH := cvdHigh[i_cvdDivR]
+    if not na(swingLo)
+        prevPlP := lastPlP
+        prevPlB := lastPlB
+        lastPlP := low[i_cvdDivR]
+        lastPlB := bar_index[i_cvdDivR]
+    if not na(ta.pivotlow(cvdLow, i_cvdDivL, i_cvdDivR))
+        prevCvdL := lastCvdL
+        lastCvdL := cvdLow[i_cvdDivR]
+    if not na(lastPhP) and not na(prevPhP) and not na(lastCvdH) and not na(prevCvdH) and (na(lastBearB) or lastPhB != lastBearB) and lastPhB - prevPhB <= i_cvdDivMax and ((i_cvdDivMode != "Hidden" and lastPhP > prevPhP and lastCvdH < prevCvdH) or (i_cvdDivMode != "Regular" and lastPhP < prevPhP and lastCvdH > prevCvdH))
+        bearHid = i_cvdDivMode != "Regular" and lastPhP < prevPhP and lastCvdH > prevCvdH
+        f_regLine(line.new(prevPhB, prevPhP, lastPhB, lastPhP, xloc = xloc.bar_index, color = c_dneg, style = bearHid ? line.style_dashed : line.style_solid, width = 2))
+        f_regLabel(label.new(lastPhB, lastPhP, "Bear Div", xloc = xloc.bar_index, color = c_dneg, textcolor = f_txtC(c_dneg), style = label.style_label_down, size = size.small))
+        cvdDivState := "Bear Div"
+        lastBearB := lastPhB
+        alert(bearHid ? "Luminar-3: hidden bearish price-CVD divergence" : "Luminar-3: bearish price-CVD divergence", alert.freq_once_per_bar_close)
+    if not na(lastPlP) and not na(prevPlP) and not na(lastCvdL) and not na(prevCvdL) and (na(lastBullB) or lastPlB != lastBullB) and lastPlB - prevPlB <= i_cvdDivMax and ((i_cvdDivMode != "Hidden" and lastPlP < prevPlP and lastCvdL > prevCvdL) or (i_cvdDivMode != "Regular" and lastPlP > prevPlP and lastCvdL < prevCvdL))
+        bullHid = i_cvdDivMode != "Regular" and lastPlP > prevPlP and lastCvdL < prevCvdL
+        f_regLine(line.new(prevPlB, prevPlP, lastPlB, lastPlP, xloc = xloc.bar_index, color = c_dpos, style = bullHid ? line.style_dashed : line.style_solid, width = 2))
+        f_regLabel(label.new(lastPlB, lastPlP, "Bull Div", xloc = xloc.bar_index, color = c_dpos, textcolor = f_txtC(c_dpos), style = label.style_label_up, size = size.small))
+        cvdDivState := "Bull Div"
+        lastBullB := lastPlB
+        alert(bullHid ? "Luminar-3: hidden bullish price-CVD divergence" : "Luminar-3: bullish price-CVD divergence", alert.freq_once_per_bar_close)
+
+// Swing high/low markers: the exact pivots the divergence engine compares,
+// shifted back onto the swing bar. Independent toggle.
+plotshape(i_cvdPiv and not na(swingHi), title = "Swing High", style = shape.triangledown, location = location.abovebar, color = c_dneg, size = size.tiny, offset = -i_cvdDivR)
+plotshape(i_cvdPiv and not na(swingLo), title = "Swing Low", style = shape.triangleup, location = location.belowbar, color = c_dpos, size = size.tiny, offset = -i_cvdDivR)
+
 //===== Info display: volume grid top-right, countdown table bottom-right =====
 // Two tables anchored at different corners (the layout Pine supports without any
 // overlapping). Volume columns interleave HTF/LTF: HTF cur, LTF cur, HTF 1, LTF 1, ...
@@ -1540,3 +1651,34 @@ else
     if not na(tbC)
         table.delete(tbC)
         tbC := na
+
+//===== CVD panel (bottom-left): anchor open/high/low/last =====
+var table tbD = na
+if i_showCvd
+    cvdBgEff  = tDark ? i_tblBg : i_tblBgL
+    cvdLbEff  = tDark ? i_tblLb : i_tblLbL
+    cvdVlEff  = tDark ? i_tblVl : i_tblVlL
+    cvdAccEff = tDark ? i_tblAcc : i_tblAccL
+    cvdBg  = color.new(cvdBgEff, 100 - i_tblOp)
+    cvdAcc = color.new(cvdAccEff, 100 - i_tblAOp)
+    cvdLin = color.new(cvdAccEff, 10)
+    if na(tbD)
+        tbD := table.new(position.bottom_left, 2, 6, bgcolor = cvdBg, border_width = 1, border_color = cvdLin, frame_width = 1, frame_color = cvdLin)
+        table.merge_cells(tbD, 0, 0, 1, 0)
+    cvdDirUp = not na(cvdLast) and not na(cvdOpen) and cvdLast >= cvdOpen
+    cvdLastCol = na(cvdLast) or na(cvdOpen) ? cvdLbEff : cvdDirUp ? c_dpos : c_dneg
+    table.cell(tbD, 0, 0, "CVD (" + i_cvdAnchor + ")", text_color = cvdVlEff, bgcolor = cvdAcc, text_size = size.small)
+    table.cell(tbD, 0, 1, "Open", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 1, na(cvdOpen) ? "-" : (cvdOpen >= 0 ? "+" : "") + f_cvol(cvdOpen), text_color = cvdVlEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 0, 2, "High", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 2, na(cvdHigh) ? "-" : (cvdHigh >= 0 ? "+" : "") + f_cvol(cvdHigh), text_color = cvdVlEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 0, 3, "Low", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 3, na(cvdLow) ? "-" : (cvdLow >= 0 ? "+" : "") + f_cvol(cvdLow), text_color = cvdVlEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 0, 4, "Last", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 4, na(cvdLast) ? "-" : (cvdLast >= 0 ? "+" : "") + f_cvol(cvdLast), text_color = cvdLastCol, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 0, 5, "Signal", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 5, cvdDivState, text_color = cvdDivState == "Bear Div" ? c_dneg : cvdDivState == "Bull Div" ? c_dpos : cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+else
+    if not na(tbD)
+        table.delete(tbD)
+        tbD := na

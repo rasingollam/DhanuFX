@@ -1,0 +1,137 @@
+// Luminar-3 companion: Cumulative Volume Delta in its own bottom panel.
+// Same engine as TradingView's built-in CVD, with Luminar defaults:
+// Anchor period 1W, Data aggregation Time.
+//@version=6
+indicator("Luminar-3 CVD", "L3 CVD", format=format.volume)
+
+import TradingView/ta/12
+
+anchorInput = input.timeframe("1W", "Anchor period")
+dataAggregationTooltip = "Defines how lower timeframe data is aggregated for the delta calculation. \"1 tick\" computes the delta on tick data and is available only on expert plans."
+dataAggregationInput = input.string("Time", "Data aggregation", options = ["Time", "1 tick"], tooltip = dataAggregationTooltip)
+useTicks = dataAggregationInput == "1 tick"
+lowerTimeframeTooltip = "The indicator scans lower timeframe data to approximate up and down volume used in the delta calculation. By default, the timeframe is chosen automatically. These inputs override this with a custom timeframe."
+ + " \n\nHigher timeframes provide more historical data, but the data will be less precise."
+useCustomTimeframeInput = input.bool(false, "Use custom timeframe", tooltip = lowerTimeframeTooltip, active = not useTicks)
+lowerTimeframeInput = input.timeframe("1", "Timeframe", active = useCustomTimeframeInput and not useTicks)
+
+var lowerTimeframe = switch
+    useTicks                => "1T"
+    useCustomTimeframeInput => lowerTimeframeInput
+    timeframe.isseconds     => "1S"
+    timeframe.isintraday    => "1"
+    timeframe.isdaily       => "5"
+    => "60"
+
+
+[openVolume, maxVolume, minVolume, lastVolume] = ta.requestVolumeDelta(lowerTimeframe, anchorInput)
+
+col = lastVolume >= openVolume ? color.teal : color.red
+hline(0)
+plotcandle(openVolume, maxVolume, minVolume, lastVolume, "CVD", color = col, bordercolor = col, wickcolor = col)
+
+var cumVol = 0.
+cumVol += nz(volume)
+deltaIsNa = na(openVolume) and na(maxVolume) and na(minVolume) and na(lastVolume)
+if barstate.islast
+    if cumVol == 0
+        runtime.error("The data vendor doesn't provide volume data for this symbol.")
+    if str.endswith(lowerTimeframe, "T") and deltaIsNa
+        runtime.error("Not enough tick depth for the current anchor period. The available tick depth ends before reaching the start of the anchor period (" + anchorInput + "). Please shorten the 'Anchor period' input or switch the calculation base from '1 Tick' to 'Time' or higher custom timeframe.")
+
+//===== Divergence (same engine as Luminar-3 main, drawn on CVD swings) =====
+// Consecutive-swing comparison on both sides: price swing[1] vs swing[2]
+// with CVD's own swing[1] vs swing[2] (candle highs/lows). Lines connect the
+// CVD swings (volume scale), so signals check 1:1 against the price-chart
+// lines in the main indicator. Same defaults: 5 / 3 / 100 bars.
+i_divOn  = input.bool(true, "Show price-CVD divergence")
+i_divMode = input.string("Both", "Divergence type", options = ["Regular", "Hidden", "Both"])
+i_divL   = input.int(5, "Pivot left bars", minval = 1, maxval = 50)
+i_divR   = input.int(3, "Pivot right bars", minval = 1, maxval = 50)
+i_divMax = input.int(100, "Max divergence length (bars)", minval = 10, maxval = 1000)
+i_divPiv = input.bool(true, "Show CVD swing markers")
+
+swingHi = ta.pivothigh(high, i_divL, i_divR)
+swingLo = ta.pivotlow(low, i_divL, i_divR)
+
+// CVD pivots hoisted (same every-bar rule as price pivots); markers use
+// absolute CVD-scale positioning since this is a volume-scale pane.
+cvdSwingHi = ta.pivothigh(maxVolume, i_divL, i_divR)
+cvdSwingLo = ta.pivotlow(minVolume, i_divL, i_divR)
+cvdHiMark = not na(cvdSwingHi) ? maxVolume[i_divR] : na
+cvdLoMark = not na(cvdSwingLo) ? minVolume[i_divR] : na
+plotshape(i_divPiv ? cvdHiMark : na, title = "CVD Swing High", style = shape.triangledown, location = location.absolute, color = color.red, size = size.tiny, offset = -i_divR)
+plotshape(i_divPiv ? cvdLoMark : na, title = "CVD Swing Low", style = shape.triangleup, location = location.absolute, color = color.teal, size = size.tiny, offset = -i_divR)
+
+var float dPrevPhP = na
+var int   dPrevPhB = na
+var float dLastPhP = na
+var int   dLastPhB = na
+var float dPrevCvdH = na
+var int   dPrevCvdHB = na
+var float dLastCvdH = na
+var int   dLastCvdHB = na
+var int   dLastBearB = na
+var float dPrevPlP = na
+var int   dPrevPlB = na
+var float dLastPlP = na
+var int   dLastPlB = na
+var float dPrevCvdL = na
+var int   dPrevCvdLB = na
+var float dLastCvdL = na
+var int   dLastCvdLB = na
+var int   dLastBullB = na
+dAnchorChg = ta.change(time(anchorInput))
+dAnchorRollover = not na(dAnchorChg) and dAnchorChg != 0
+if i_divOn
+    if dAnchorRollover
+        dPrevPhP := na
+        dPrevPhB := na
+        dLastPhP := na
+        dLastPhB := na
+        dPrevCvdH := na
+        dPrevCvdHB := na
+        dLastCvdH := na
+        dLastCvdHB := na
+        dLastBearB := na
+        dPrevPlP := na
+        dPrevPlB := na
+        dLastPlP := na
+        dLastPlB := na
+        dPrevCvdL := na
+        dPrevCvdLB := na
+        dLastCvdL := na
+        dLastCvdLB := na
+        dLastBullB := na
+    if not na(swingHi)
+        dPrevPhP := dLastPhP
+        dPrevPhB := dLastPhB
+        dLastPhP := high[i_divR]
+        dLastPhB := bar_index[i_divR]
+    if not na(cvdSwingHi)
+        dPrevCvdH := dLastCvdH
+        dPrevCvdHB := dLastCvdHB
+        dLastCvdH := maxVolume[i_divR]
+        dLastCvdHB := bar_index[i_divR]
+    if not na(swingLo)
+        dPrevPlP := dLastPlP
+        dPrevPlB := dLastPlB
+        dLastPlP := low[i_divR]
+        dLastPlB := bar_index[i_divR]
+    if not na(cvdSwingLo)
+        dPrevCvdL := dLastCvdL
+        dPrevCvdLB := dLastCvdLB
+        dLastCvdL := minVolume[i_divR]
+        dLastCvdLB := bar_index[i_divR]
+    if not na(dLastPhP) and not na(dPrevPhP) and not na(dLastCvdH) and not na(dPrevCvdH) and (na(dLastBearB) or dLastPhB != dLastBearB) and dLastPhB - dPrevPhB <= i_divMax and ((i_divMode != "Hidden" and dLastPhP > dPrevPhP and dLastCvdH < dPrevCvdH) or (i_divMode != "Regular" and dLastPhP < dPrevPhP and dLastCvdH > dPrevCvdH))
+        dBearHid = i_divMode != "Regular" and dLastPhP < dPrevPhP and dLastCvdH > dPrevCvdH
+        line.new(dPrevCvdHB, dPrevCvdH, dLastCvdHB, dLastCvdH, xloc = xloc.bar_index, color = color.red, style = dBearHid ? line.style_dashed : line.style_solid, width = 2)
+        label.new(dLastCvdHB, dLastCvdH, "Bear Div", xloc = xloc.bar_index, color = color.red, textcolor = color.white, style = label.style_label_down, size = size.small)
+        dLastBearB := dLastPhB
+        alert(dBearHid ? "Luminar-3 CVD: hidden bearish price-CVD divergence" : "Luminar-3 CVD: bearish price-CVD divergence", alert.freq_once_per_bar_close)
+    if not na(dLastPlP) and not na(dPrevPlP) and not na(dLastCvdL) and not na(dPrevCvdL) and (na(dLastBullB) or dLastPlB != dLastBullB) and dLastPlB - dPrevPlB <= i_divMax and ((i_divMode != "Hidden" and dLastPlP < dPrevPlP and dLastCvdL > dPrevCvdL) or (i_divMode != "Regular" and dLastPlP > dPrevPlP and dLastCvdL < dPrevCvdL))
+        dBullHid = i_divMode != "Regular" and dLastPlP > dPrevPlP and dLastCvdL < dPrevCvdL
+        line.new(dPrevCvdLB, dPrevCvdL, dLastCvdLB, dLastCvdL, xloc = xloc.bar_index, color = color.teal, style = dBullHid ? line.style_dashed : line.style_solid, width = 2)
+        label.new(dLastCvdLB, dLastCvdL, "Bull Div", xloc = xloc.bar_index, color = color.teal, textcolor = color.white, style = label.style_label_up, size = size.small)
+        dLastBullB := dLastPlB
+        alert(dBullHid ? "Luminar-3 CVD: hidden bullish price-CVD divergence" : "Luminar-3 CVD: bullish price-CVD divergence", alert.freq_once_per_bar_close)
