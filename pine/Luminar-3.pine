@@ -8,6 +8,8 @@
 indicator("Luminar-3", overlay=true,
      max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=5000)
 
+import TradingView/ta/12
+
 // Colors are editable per group in the Inputs dialog. Bright chart-level
 // defaults (midlines, volume/VA text, value-area fills) auto-adjust to the
 // light/dark chart theme behind the scenes.
@@ -111,6 +113,13 @@ i_vpVal = input.color(#22D3EE, "VAL color", group = "Candle-1 VP", tooltip = "Lo
 i_vpVah = input.color(#C084FC, "VAH color", group = "Candle-1 VP", tooltip = "Upper value-area edge bin fill and its label.")
 i_vpVa  = input.color(#D9E6F7, "Value-area fill", group = "Candle-1 VP", tooltip = "Fill of the bins inside the value area (VAH to VAL).")
 i_vpBin = input.color(#64748B, "Other bins", group = "Candle-1 VP", tooltip = "Fill of the bins outside the value area.")
+
+//--- CVD ---
+i_showCvd   = input.bool(true, "Show CVD panel", group = "CVD", tooltip = "Cumulative Volume Delta panel (bottom-left), same engine as TradingView's built-in CVD.")
+i_cvdAnchor = input.timeframe("1W", "Anchor period", group = "CVD")
+i_cvdAgg    = input.string("Time", "Data aggregation", options = ["Time", "1 tick"], group = "CVD", tooltip = "Defines how lower timeframe data is aggregated for the delta calculation. \"1 tick\" computes the delta on tick data and is available only on expert plans.")
+i_cvdCustom = input.bool(false, "Use custom timeframe", group = "CVD", tooltip = "Override the automatic lower timeframe used to approximate up/down volume. Higher timeframes provide more historical data, but the data will be less precise.", active = i_cvdAgg != "1 tick")
+i_cvdTf     = input.timeframe("1", "Timeframe", group = "CVD", active = i_cvdCustom and i_cvdAgg != "1 tick")
 
 //--- Info Display ---
 i_showTbl = input.bool(true,   "Show info tables", group = "Info Display", tooltip = "Top-right table with live HTF/LTF candle volume, buy/sell/delta and the HTF/LTF/range countdowns.")
@@ -1424,6 +1433,19 @@ else
         vpLval := na
     vpCandle := na
 
+//===== CVD (Cumulative Volume Delta, same engine as TV's built-in) =====
+// Overlay script, so CVD is shown as values in its own panel (bottom-left)
+// instead of a separate-pane plot. Anchor 1W + Time aggregation by default.
+cvdUseTicks = i_cvdAgg == "1 tick"
+cvdLowerTf = switch
+    cvdUseTicks          => "1T"
+    i_cvdCustom          => i_cvdTf
+    timeframe.isseconds  => "1S"
+    timeframe.isintraday => "1"
+    timeframe.isdaily    => "5"
+    => "60"
+[cvdOpen, cvdHigh, cvdLow, cvdLast] = ta.requestVolumeDelta(cvdLowerTf, i_cvdAnchor)
+
 //===== Info display: volume grid top-right, countdown table bottom-right =====
 // Two tables anchored at different corners (the layout Pine supports without any
 // overlapping). Volume columns interleave HTF/LTF: HTF cur, LTF cur, HTF 1, LTF 1, ...
@@ -1540,3 +1562,32 @@ else
     if not na(tbC)
         table.delete(tbC)
         tbC := na
+
+//===== CVD panel (bottom-left): anchor open/high/low/last =====
+var table tbD = na
+if i_showCvd
+    cvdBgEff  = tDark ? i_tblBg : i_tblBgL
+    cvdLbEff  = tDark ? i_tblLb : i_tblLbL
+    cvdVlEff  = tDark ? i_tblVl : i_tblVlL
+    cvdAccEff = tDark ? i_tblAcc : i_tblAccL
+    cvdBg  = color.new(cvdBgEff, 100 - i_tblOp)
+    cvdAcc = color.new(cvdAccEff, 100 - i_tblAOp)
+    cvdLin = color.new(cvdAccEff, 10)
+    if na(tbD)
+        tbD := table.new(position.bottom_left, 2, 5, bgcolor = cvdBg, border_width = 1, border_color = cvdLin, frame_width = 1, frame_color = cvdLin)
+        table.merge_cells(tbD, 0, 0, 1, 0)
+    cvdDirUp = not na(cvdLast) and not na(cvdOpen) and cvdLast >= cvdOpen
+    cvdLastCol = na(cvdLast) or na(cvdOpen) ? cvdLbEff : cvdDirUp ? c_dpos : c_dneg
+    table.cell(tbD, 0, 0, "CVD (" + i_cvdAnchor + ")", text_color = cvdVlEff, bgcolor = cvdAcc, text_size = size.small)
+    table.cell(tbD, 0, 1, "Open", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 1, na(cvdOpen) ? "-" : (cvdOpen >= 0 ? "+" : "") + f_cvol(cvdOpen), text_color = cvdVlEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 0, 2, "High", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 2, na(cvdHigh) ? "-" : (cvdHigh >= 0 ? "+" : "") + f_cvol(cvdHigh), text_color = cvdVlEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 0, 3, "Low", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 3, na(cvdLow) ? "-" : (cvdLow >= 0 ? "+" : "") + f_cvol(cvdLow), text_color = cvdVlEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 0, 4, "Last", text_color = cvdLbEff, bgcolor = cvdBg, text_size = size.small)
+    table.cell(tbD, 1, 4, na(cvdLast) ? "-" : (cvdLast >= 0 ? "+" : "") + f_cvol(cvdLast), text_color = cvdLastCol, bgcolor = cvdBg, text_size = size.small)
+else
+    if not na(tbD)
+        table.delete(tbD)
+        tbD := na
