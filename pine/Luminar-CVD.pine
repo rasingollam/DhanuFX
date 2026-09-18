@@ -38,3 +38,105 @@ if barstate.islast
         runtime.error("The data vendor doesn't provide volume data for this symbol.")
     if str.endswith(lowerTimeframe, "T") and deltaIsNa
         runtime.error("Not enough tick depth for the current anchor period. The available tick depth ends before reaching the start of the anchor period (" + anchorInput + "). Please shorten the 'Anchor period' input or switch the calculation base from '1 Tick' to 'Time' or higher custom timeframe.")
+
+//===== Divergence (same engine as Luminar-3 main, drawn on CVD swings) =====
+// Price pivots are paired with CVD's own swing nearest in time; lines connect
+// the CVD swings (volume scale), so signals can be checked 1:1 against the
+// price-chart lines in the main indicator. Same defaults: 5 / 3 / 100 bars.
+i_divOn  = input.bool(true, "Show price-CVD divergence")
+i_divL   = input.int(5, "Pivot left bars", minval = 1, maxval = 50)
+i_divR   = input.int(3, "Pivot right bars", minval = 1, maxval = 50)
+i_divMax = input.int(100, "Max divergence length (bars)", minval = 10, maxval = 1000)
+
+swingHi = ta.pivothigh(high, i_divL, i_divR)
+swingLo = ta.pivotlow(low, i_divL, i_divR)
+
+var array<int>   dHB = array.new_int()
+var array<float> dHV = array.new_float()
+var array<int>   dLB = array.new_int()
+var array<float> dLV = array.new_float()
+var float dPrevPhP = na
+var int   dPrevPhB = na
+var float dPrevPhC = na
+var int   dPrevPhCB = na
+var int   dLastBearB = na
+var float dPrevPlP = na
+var int   dPrevPlB = na
+var float dPrevPlC = na
+var int   dPrevPlCB = na
+var int   dLastBullB = na
+dAnchorChg = ta.change(time(anchorInput))
+dAnchorRollover = not na(dAnchorChg) and dAnchorChg != 0
+dPairTol = (i_divL + i_divR) * 2
+if i_divOn
+    if dAnchorRollover
+        array.clear(dHB)
+        array.clear(dHV)
+        array.clear(dLB)
+        array.clear(dLV)
+        dPrevPhP := na
+        dPrevPhB := na
+        dPrevPhC := na
+        dPrevPhCB := na
+        dLastBearB := na
+        dPrevPlP := na
+        dPrevPlB := na
+        dPrevPlC := na
+        dPrevPlCB := na
+        dLastBullB := na
+    if not na(ta.pivothigh(lastVolume, i_divL, i_divR))
+        array.push(dHB, bar_index[i_divR])
+        array.push(dHV, lastVolume[i_divR])
+        while array.size(dHB) > 30
+            array.shift(dHB)
+            array.shift(dHV)
+    if not na(ta.pivotlow(lastVolume, i_divL, i_divR))
+        array.push(dLB, bar_index[i_divR])
+        array.push(dLV, lastVolume[i_divR])
+        while array.size(dLB) > 30
+            array.shift(dLB)
+            array.shift(dLV)
+    if not na(swingHi)
+        curB = bar_index[i_divR]
+        curP = high[i_divR]
+        float pairC = na
+        int   pairCB = na
+        if array.size(dHB) > 0
+            for k = 0 to array.size(dHB) - 1
+                kb = array.get(dHB, k)
+                kv = array.get(dHV, k)
+                if math.abs(kb - curB) <= dPairTol and (na(pairC) or kv > pairC)
+                    pairC := kv
+                    pairCB := kb
+        if not na(pairC)
+            if not na(dPrevPhP) and not na(dPrevPhC) and (na(dLastBearB) or curB != dLastBearB) and curP > dPrevPhP and pairC < dPrevPhC and curB - dPrevPhB <= i_divMax
+                line.new(dPrevPhCB, dPrevPhC, pairCB, pairC, xloc = xloc.bar_index, color = color.red, style = line.style_solid, width = 2)
+                label.new(pairCB, pairC, "Bear Div", xloc = xloc.bar_index, color = color.red, textcolor = color.white, style = label.style_label_down, size = size.small)
+                dLastBearB := curB
+                alert("Luminar-3 CVD: bearish price-CVD divergence", alert.freq_once_per_bar_close)
+            dPrevPhP := curP
+            dPrevPhB := curB
+            dPrevPhC := pairC
+            dPrevPhCB := pairCB
+    if not na(swingLo)
+        curB = bar_index[i_divR]
+        curP = low[i_divR]
+        float pairC = na
+        int   pairCB = na
+        if array.size(dLB) > 0
+            for k = 0 to array.size(dLB) - 1
+                kb = array.get(dLB, k)
+                kv = array.get(dLV, k)
+                if math.abs(kb - curB) <= dPairTol and (na(pairC) or kv < pairC)
+                    pairC := kv
+                    pairCB := kb
+        if not na(pairC)
+            if not na(dPrevPlP) and not na(dPrevPlC) and (na(dLastBullB) or curB != dLastBullB) and curP < dPrevPlP and pairC > dPrevPlC and curB - dPrevPlB <= i_divMax
+                line.new(dPrevPlCB, dPrevPlC, pairCB, pairC, xloc = xloc.bar_index, color = color.teal, style = line.style_solid, width = 2)
+                label.new(pairCB, pairC, "Bull Div", xloc = xloc.bar_index, color = color.teal, textcolor = color.white, style = label.style_label_up, size = size.small)
+                dLastBullB := curB
+                alert("Luminar-3 CVD: bullish price-CVD divergence", alert.freq_once_per_bar_close)
+            dPrevPlP := curP
+            dPrevPlB := curB
+            dPrevPlC := pairC
+            dPrevPlCB := pairCB
