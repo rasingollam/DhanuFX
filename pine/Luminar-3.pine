@@ -123,6 +123,8 @@ i_cvdTf     = input.timeframe("1", "Timeframe", group = "CVD", active = i_cvdCus
 i_cvdDiv    = input.bool(true, "Show price-CVD divergence", group = "CVD", tooltip = "Regular bullish/bearish divergence between price pivot highs/lows and CVD at those pivots, drawn on the price chart. Pivot-confirmed, so a fresh signal can repaint until the pivot confirms.")
 i_cvdDivL   = input.int(5, "Pivot left bars", minval = 1, maxval = 50, group = "CVD")
 i_cvdDivR   = input.int(3, "Pivot right bars", minval = 1, maxval = 50, group = "CVD")
+i_cvdDivMax = input.int(50, "Max divergence length (bars)", minval = 10, maxval = 1000, group = "CVD", tooltip = "Only near-term divergences: pivots older than this are dropped, so long-spanning divergences never signal.")
+i_cvdPiv    = input.bool(true, "Show swing high/low markers", group = "CVD", tooltip = "Triangle markers on the exact swing highs/lows the divergence engine uses. Markers confirm late with the pivots.")
 
 //--- Info Display ---
 i_showTbl = input.bool(true,   "Show info tables", group = "Info Display", tooltip = "Top-right table with live HTF/LTF candle volume, buy/sell/delta and the HTF/LTF/range countdowns.")
@@ -1477,6 +1479,10 @@ if i_cvdDiv
         curPhP = high[i_cvdDivR]
         curPhC = cvdLast[i_cvdDivR]
         curPhB = bar_index[i_cvdDivR]
+        while array.size(divPhB) > 0 and curPhB - array.get(divPhB, 0) > i_cvdDivMax
+            array.shift(divPhP)
+            array.shift(divPhC)
+            array.shift(divPhB)
         if not na(curPhC) and array.size(divPhP) > 0
             bestPhP = array.max(divPhP)
             bix = array.indexof(divPhP, bestPhP)
@@ -1498,6 +1504,10 @@ if i_cvdDiv
         curPlP = low[i_cvdDivR]
         curPlC = cvdLast[i_cvdDivR]
         curPlB = bar_index[i_cvdDivR]
+        while array.size(divPlB) > 0 and curPlB - array.get(divPlB, 0) > i_cvdDivMax
+            array.shift(divPlP)
+            array.shift(divPlC)
+            array.shift(divPlB)
         if not na(curPlC) and array.size(divPlP) > 0
             bestPlP = array.min(divPlP)
             bixL = array.indexof(divPlP, bestPlP)
@@ -1515,6 +1525,11 @@ if i_cvdDiv
             array.shift(divPlP)
             array.shift(divPlC)
             array.shift(divPlB)
+
+// Swing high/low markers: the exact pivots the divergence engine compares,
+// shifted back onto the swing bar. Independent toggle.
+plotshape(i_cvdPiv and not na(ta.pivothigh(high, i_cvdDivL, i_cvdDivR)), title = "Swing High", style = shape.triangledown, location = location.abovebar, color = c_dneg, size = size.tiny, offset = -i_cvdDivR)
+plotshape(i_cvdPiv and not na(ta.pivotlow(low, i_cvdDivL, i_cvdDivR)), title = "Swing Low", style = shape.triangleup, location = location.belowbar, color = c_dpos, size = size.tiny, offset = -i_cvdDivR)
 
 //===== Info display: volume grid top-right, countdown table bottom-right =====
 // Two tables anchored at different corners (the layout Pine supports without any
