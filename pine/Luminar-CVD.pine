@@ -2,7 +2,7 @@
 // Same engine as TradingView's built-in CVD, with Luminar defaults:
 // Anchor period 1W, Data aggregation Time.
 //@version=6
-indicator("Luminar-3 CVD", "L3 CVD", format=format.volume)
+indicator("Luminar-3 CVD", "L3 CVD", format=format.volume, max_bars_back=5000)
 
 import TradingView/ta/12
 
@@ -39,11 +39,10 @@ if barstate.islast
     if str.endswith(lowerTimeframe, "T") and deltaIsNa
         runtime.error("Not enough tick depth for the current anchor period. The available tick depth ends before reaching the start of the anchor period (" + anchorInput + "). Please shorten the 'Anchor period' input or switch the calculation base from '1 Tick' to 'Time' or higher custom timeframe.")
 
-//===== Divergence (same engine as Luminar-3 main, drawn on CVD swings) =====
-// Consecutive-swing comparison on both sides: price swing[1] vs swing[2]
-// with CVD's own swing[1] vs swing[2] (candle highs/lows). Lines connect the
-// CVD swings (volume scale), so signals check 1:1 against the price-chart
-// lines in the main indicator. Same defaults: 5 / 3 / 100 bars.
+//===== Divergence (same engine as Luminar-3 main, drawn at CVD scale) =====
+// Each confirmed price swing is paired with CVD's extreme over that swing's
+// own footprint, so signals check 1:1 against the price-chart lines (same
+// swing bars on x, CVD values on y). Same defaults: 5 / 3 / 100 bars.
 i_divOn  = input.bool(true, "Show price-CVD divergence")
 i_divMode = input.string("Both", "Divergence type", options = ["Regular", "Hidden", "Both"])
 i_divL   = input.int(5, "Pivot left bars", minval = 1, maxval = 50)
@@ -53,6 +52,10 @@ i_divPiv = input.bool(true, "Show CVD swing markers")
 
 swingHi = ta.pivothigh(high, i_divL, i_divR)
 swingLo = ta.pivotlow(low, i_divL, i_divR)
+
+// CVD footprint extremes over each swing's span (must run every bar).
+dFootHi = ta.highest(maxVolume, i_divL + i_divR + 1)
+dFootLo = ta.lowest(minVolume, i_divL + i_divR + 1)
 
 // CVD pivots hoisted (same every-bar rule as price pivots); markers use
 // absolute CVD-scale positioning since this is a volume-scale pane.
@@ -68,18 +71,14 @@ var int   dPrevPhB = na
 var float dLastPhP = na
 var int   dLastPhB = na
 var float dPrevCvdH = na
-var int   dPrevCvdHB = na
 var float dLastCvdH = na
-var int   dLastCvdHB = na
 var int   dLastBearB = na
 var float dPrevPlP = na
 var int   dPrevPlB = na
 var float dLastPlP = na
 var int   dLastPlB = na
 var float dPrevCvdL = na
-var int   dPrevCvdLB = na
 var float dLastCvdL = na
-var int   dLastCvdLB = na
 var int   dLastBullB = na
 dAnchorChg = ta.change(time(anchorInput))
 dAnchorRollover = not na(dAnchorChg) and dAnchorChg != 0
@@ -90,48 +89,38 @@ if i_divOn
         dLastPhP := na
         dLastPhB := na
         dPrevCvdH := na
-        dPrevCvdHB := na
         dLastCvdH := na
-        dLastCvdHB := na
         dLastBearB := na
         dPrevPlP := na
         dPrevPlB := na
         dLastPlP := na
         dLastPlB := na
         dPrevCvdL := na
-        dPrevCvdLB := na
         dLastCvdL := na
-        dLastCvdLB := na
         dLastBullB := na
     if not na(swingHi)
         dPrevPhP := dLastPhP
         dPrevPhB := dLastPhB
+        dPrevCvdH := dLastCvdH
         dLastPhP := high[i_divR]
         dLastPhB := bar_index[i_divR]
-    if not na(cvdSwingHi)
-        dPrevCvdH := dLastCvdH
-        dPrevCvdHB := dLastCvdHB
-        dLastCvdH := maxVolume[i_divR]
-        dLastCvdHB := bar_index[i_divR]
+        dLastCvdH := dFootHi
     if not na(swingLo)
         dPrevPlP := dLastPlP
         dPrevPlB := dLastPlB
+        dPrevCvdL := dLastCvdL
         dLastPlP := low[i_divR]
         dLastPlB := bar_index[i_divR]
-    if not na(cvdSwingLo)
-        dPrevCvdL := dLastCvdL
-        dPrevCvdLB := dLastCvdLB
-        dLastCvdL := minVolume[i_divR]
-        dLastCvdLB := bar_index[i_divR]
+        dLastCvdL := dFootLo
     if not na(dLastPhP) and not na(dPrevPhP) and not na(dLastCvdH) and not na(dPrevCvdH) and (na(dLastBearB) or dLastPhB != dLastBearB) and dLastPhB - dPrevPhB <= i_divMax and ((i_divMode != "Hidden" and dLastPhP > dPrevPhP and dLastCvdH < dPrevCvdH) or (i_divMode != "Regular" and dLastPhP < dPrevPhP and dLastCvdH > dPrevCvdH))
         dBearHid = i_divMode != "Regular" and dLastPhP < dPrevPhP and dLastCvdH > dPrevCvdH
-        line.new(dPrevCvdHB, dPrevCvdH, dLastCvdHB, dLastCvdH, xloc = xloc.bar_index, color = color.red, style = dBearHid ? line.style_dashed : line.style_solid, width = 2)
-        label.new(dLastCvdHB, dLastCvdH, "Bear Div", xloc = xloc.bar_index, color = color.red, textcolor = color.white, style = label.style_label_down, size = size.small)
+        line.new(dPrevPhB, dPrevCvdH, dLastPhB, dLastCvdH, xloc = xloc.bar_index, color = color.red, style = dBearHid ? line.style_dashed : line.style_solid, width = 2)
+        label.new(dLastPhB, dLastCvdH, "Bear Div", xloc = xloc.bar_index, color = color.red, textcolor = color.white, style = label.style_label_down, size = size.small)
         dLastBearB := dLastPhB
         alert(dBearHid ? "Luminar-3 CVD: hidden bearish price-CVD divergence" : "Luminar-3 CVD: bearish price-CVD divergence", alert.freq_once_per_bar_close)
     if not na(dLastPlP) and not na(dPrevPlP) and not na(dLastCvdL) and not na(dPrevCvdL) and (na(dLastBullB) or dLastPlB != dLastBullB) and dLastPlB - dPrevPlB <= i_divMax and ((i_divMode != "Hidden" and dLastPlP < dPrevPlP and dLastCvdL > dPrevCvdL) or (i_divMode != "Regular" and dLastPlP > dPrevPlP and dLastCvdL < dPrevCvdL))
         dBullHid = i_divMode != "Regular" and dLastPlP > dPrevPlP and dLastCvdL < dPrevCvdL
-        line.new(dPrevCvdLB, dPrevCvdL, dLastCvdLB, dLastCvdL, xloc = xloc.bar_index, color = color.teal, style = dBullHid ? line.style_dashed : line.style_solid, width = 2)
-        label.new(dLastCvdLB, dLastCvdL, "Bull Div", xloc = xloc.bar_index, color = color.teal, textcolor = color.white, style = label.style_label_up, size = size.small)
+        line.new(dPrevPlB, dPrevCvdL, dLastPlB, dLastCvdL, xloc = xloc.bar_index, color = color.teal, style = dBullHid ? line.style_dashed : line.style_solid, width = 2)
+        label.new(dLastPlB, dLastCvdL, "Bull Div", xloc = xloc.bar_index, color = color.teal, textcolor = color.white, style = label.style_label_up, size = size.small)
         dLastBullB := dLastPlB
         alert(dBullHid ? "Luminar-3 CVD: hidden bullish price-CVD divergence" : "Luminar-3 CVD: bullish price-CVD divergence", alert.freq_once_per_bar_close)
